@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Trophy, Flame, CheckCircle2, Code2, Users, Medal, Crown, Rocket, Activity, TrendingUp } from 'lucide-react';
-import { supabase } from '@/lib/supabase/client';
+import { createClient } from '@/lib/supabase/client';
 import { UserStats } from '@/lib/types/database.types';
 import { avatarIcons } from '@/lib/utils/constants';
 

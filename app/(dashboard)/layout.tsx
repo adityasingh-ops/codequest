@@ -9,7 +9,7 @@ import {
   LayoutDashboard, Code2, Trophy, Users, 
   Swords, User, Brain, LogOut 
 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/client';
 
 export default function DashboardLayout({
   children,
