@@ -1,9 +1,9 @@
 // components/revision/RevisionTab.tsx
 "use client";
-import React from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Brain, Target, BookMarked, ExternalLink } from 'lucide-react';
-import { problemData, getDifficultyColor } from '@/lib/utils/constants';
+import { Brain, Target, BookMarked, ExternalLink, AlertCircle } from 'lucide-react';
+import { problemData, getDifficultyColor } from '@/lib/utils/problemData';
 
 interface RevisionTabProps {
   revisionProblems: Set<number>;
@@ -11,12 +11,43 @@ interface RevisionTabProps {
 }
 
 export default function RevisionTab({ revisionProblems, leetcodeUsername }: RevisionTabProps) {
+  // Get all valid problem IDs from the dataset
+  console.log('Total problems loaded:', 
+  Object.values(problemData).reduce((total, track) => 
+    total + Object.values(track.weeks).reduce((weekTotal, week: any) => 
+      weekTotal + week.days.reduce((dayTotal: number, day: any) => 
+        dayTotal + day.problems.length, 0
+      ), 0
+    ), 0
+  )
+);
+  const validProblemIds = useMemo(() => {
+    const ids = new Set<number>();
+    Object.values(problemData).forEach(track => {
+      Object.values(track.weeks).forEach((week: any) => {
+        week.days.forEach((day: any) => {
+          day.problems.forEach((problem: any) => {
+            ids.add(problem.id);
+          });
+        });
+      });
+    });
+    return ids;
+  }, []);
+
+  // Filter out invalid revision problem IDs
+  const validRevisionProblems = useMemo(() => {
+    return Array.from(revisionProblems).filter(id => validProblemIds.has(id));
+  }, [revisionProblems, validProblemIds]);
+
+  const invalidCount = revisionProblems.size - validRevisionProblems.length;
+
   const getRevisionByDifficulty = (difficulty: string) => {
-    return Array.from(revisionProblems).filter(id => {
+    return validRevisionProblems.filter(id => {
       for (const track of Object.values(problemData)) {
         for (const week of Object.values(track.weeks)) {
-          for (const day of week.days) {
-            const problem = day.problems.find(p => p.id === id);
+          for (const day of (week as any).days) {
+            const problem = day.problems.find((p: any) => p.id === id);
             if (problem?.difficulty === difficulty) return true;
           }
         }
@@ -40,7 +71,21 @@ export default function RevisionTab({ revisionProblems, leetcodeUsername }: Revi
           </div>
         </div>
 
-        {revisionProblems.size === 0 ? (
+        {/* Warning for invalid problems */}
+        {invalidCount > 0 && (
+          <div className="mb-4 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-yellow-400 font-medium">Invalid Revision Problems Detected</p>
+              <p className="text-sm text-gray-400 mt-1">
+                {invalidCount} problem{invalidCount > 1 ? 's' : ''} marked for revision no longer exist in the dataset. 
+                They may have been removed or the data was updated.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {validRevisionProblems.length === 0 ? (
           <div className="text-center py-12">
             <Target className="w-16 h-16 text-gray-600 mx-auto mb-4" />
             <p className="text-gray-400 text-lg">No problems marked for revision!</p>
@@ -52,9 +97,9 @@ export default function RevisionTab({ revisionProblems, leetcodeUsername }: Revi
               const revisionInTrack: any[] = [];
               
               Object.entries(trackData.weeks).forEach(([weekKey, week]) => {
-                week.days.forEach(day => {
-                  day.problems.forEach(problem => {
-                    if (revisionProblems.has(problem.id)) {
+                (week as any).days.forEach((day: any) => {
+                  day.problems.forEach((problem: any) => {
+                    if (validRevisionProblems.includes(problem.id)) {
                       revisionInTrack.push({ ...problem, week: weekKey, topic: day.topic });
                     }
                   });
@@ -86,7 +131,7 @@ export default function RevisionTab({ revisionProblems, leetcodeUsername }: Revi
                           <span className="text-cyan-400 font-medium text-sm">{problem.points} pts</span>
                         </div>
                         <a
-                          href={`https://leetcode.com/problems/${problem.title.toLowerCase().replace(/\s+/g, '-').replace(/[()]/g, '')}/`}
+                          href={`https://leetcode.com/problems/${problem.titleSlug || problem.title.toLowerCase().replace(/\s+/g, '-').replace(/[()]/g, '')}/`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="ml-3 p-2 bg-gradient-to-br from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 rounded-lg transition-colors"
@@ -103,10 +148,10 @@ export default function RevisionTab({ revisionProblems, leetcodeUsername }: Revi
         )}
 
         {/* Revision Stats */}
-        {revisionProblems.size > 0 && (
+        {validRevisionProblems.length > 0 && (
           <div className="mt-6 grid grid-cols-4 gap-4">
             <div className="bg-orange-500/10 border border-orange-500/30 rounded-lg p-4 text-center">
-              <p className="text-3xl font-semibold text-orange-400">{revisionProblems.size}</p>
+              <p className="text-3xl font-semibold text-orange-400">{validRevisionProblems.length}</p>
               <p className="text-sm text-gray-400 mt-1">Total Marked</p>
             </div>
             <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 text-center">
@@ -123,6 +168,7 @@ export default function RevisionTab({ revisionProblems, leetcodeUsername }: Revi
             </div>
           </div>
         )}
+        
       </div>
     </motion.div>
   );

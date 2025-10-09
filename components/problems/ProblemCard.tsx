@@ -100,10 +100,7 @@ export default function ProblemCard({
     }
   };
 
-  const problemUrl = `https://leetcode.com/problems/${problem.title
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[()]/g, '')}/`;
+  const problemUrl = `https://leetcode.com/problems/${problem.titleSlug || problem.title.toLowerCase().replace(/\s+/g, '-').replace(/[()]/g, '')}/`;
 
   return (
     <motion.div
@@ -136,10 +133,14 @@ export default function ProblemCard({
 
           {/* Verification indicator */}
           {verificationStatus === 'verified' && (
-            <Shield className="w-4 h-4 text-green-400" title="Verified on LeetCode" />
+            <span title="Verified on LeetCode">
+              <Shield className="w-4 h-4 text-green-400" />
+            </span>
           )}
           {verificationStatus === 'failed' && (
-            <AlertCircle className="w-4 h-4 text-yellow-400" title="Not verified" />
+            <span title="Not verified">
+              <AlertCircle className="w-4 h-4 text-yellow-400" />
+            </span>
           )}
 
           <div className="flex-1">

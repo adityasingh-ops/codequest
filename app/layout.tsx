@@ -1,23 +1,31 @@
 // app/layout.tsx
-import './globals.css'
-import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+import { AuthProvider } from "@/lib/providers/AuthProvider";
+import { UserDataProvider } from "@/lib/providers/UserDataProvider";
 
-const inter = Inter({ subsets: ['latin'] })
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'CodeQuest - Your Ultimate Coding Journey',
-  description: 'Track your coding progress, compete with friends, and unlock achievements',
-}
+  title: "LeetCode Tracker",
+  description: "Track your LeetCode progress",
+};
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode
+  children: React.ReactNode;
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>{children}</body>
+      <body className={inter.className}>
+        <AuthProvider>
+          <UserDataProvider>
+            {children}
+          </UserDataProvider>
+        </AuthProvider>
+      </body>
     </html>
-  )
+  );
 }

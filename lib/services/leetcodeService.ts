@@ -1,5 +1,9 @@
 // lib/services/leetcodeService.ts
 export class LeetCodeService {
+      private static problemsCache: any[] | null = null;
+  private static cacheTimestamp: number = 0;
+  private static CACHE_DURATION = 1000 * 60 * 60; // 1 hour
+  
   static calculateStreak(submissionCalendar: Record<string, number>): number {
     if (!submissionCalendar || Object.keys(submissionCalendar).length === 0) {
       return 0;
@@ -108,5 +112,117 @@ export class LeetCodeService {
       console.error('Error fetching LeetCode stats:', error);
       throw error;
     }
+  }
+  
+
+static async getAllProblems(): Promise<any[]> {
+    const now = Date.now();
+    
+    // Return cached data if still valid
+    if (this.problemsCache && (now - this.cacheTimestamp) < this.CACHE_DURATION) {
+      return this.problemsCache;
+    }
+
+    try {
+      const response = await fetch('https://alfa-leetcode-api.onrender.com/problems?limit=3500');
+      
+      if (!response.ok) {
+        throw new Error('Failed to fetch problems list');
+      }
+
+      const data = await response.json();
+      this.problemsCache = data.problemsetQuestionList || [];
+      this.cacheTimestamp = now;
+
+      // Ensure problemsCache is always an array, never null
+      return this.problemsCache ?? [];
+    } catch (error) {
+      console.error('Error fetching all problems:', error);
+      // If problemsCache is null, return empty array to satisfy type
+      return this.problemsCache ?? [];
+    }
+  }
+
+  static async fetchProblemDetails(problemNumber: number): Promise<{
+    id: number;
+    title: string;
+    titleSlug: string;
+    difficulty: 'Easy' | 'Medium' | 'Hard';
+    exists: boolean;
+  }> {
+    try {
+      const allProblems = await this.getAllProblems();
+      
+      const problem = allProblems.find(
+        (p: any) => p.frontendQuestionId === String(problemNumber)
+      );
+
+      if (problem) {
+        return {
+          id: problemNumber,
+          title: problem.title,
+          titleSlug: problem.titleSlug,
+          difficulty: problem.difficulty as 'Easy' | 'Medium' | 'Hard',
+          exists: true
+        };
+      }
+
+      console.warn(`Problem ${problemNumber} not found in LeetCode database`);
+      return {
+        id: problemNumber,
+        title: `Problem ${problemNumber}`,
+        titleSlug: String(problemNumber),
+        difficulty: 'Medium',
+        exists: false
+      };
+    } catch (error) {
+      console.error(`Error fetching problem ${problemNumber}:`, error);
+      return {
+        id: problemNumber,
+        title: `Problem ${problemNumber}`,
+        titleSlug: String(problemNumber),
+        difficulty: 'Medium',
+        exists: false
+      };
+    }
+  }
+
+  static async validateAndFetchProblems(problemNumbers: number[]): Promise<{
+    validProblems: any[];
+    invalidProblems: number[];
+  }> {
+    console.log('Validating problems:', problemNumbers);
+    
+    // Fetch all problems once at the beginning
+    await this.getAllProblems();
+    
+    const results = await Promise.allSettled(
+      problemNumbers.map(num => this.fetchProblemDetails(num))
+    );
+
+    const validProblems: any[] = [];
+    const invalidProblems: number[] = [];
+
+    results.forEach((result, index) => {
+      if (result.status === 'fulfilled' && result.value.exists) {
+        const problem = result.value;
+        validProblems.push({
+          id: parseInt(`${Date.now()}${index}`),
+          title: problem.title,
+          titleSlug: problem.titleSlug,
+          difficulty: problem.difficulty,
+          leetcodeNum: problem.id,
+          points: problem.difficulty === 'Easy' ? 10 : problem.difficulty === 'Medium' ? 15 : 20,
+          link: `https://leetcode.com/problems/${problem.titleSlug}/`
+        });
+        console.log(`✓ Problem ${problemNumbers[index]}: ${problem.title}`);
+      } else {
+        invalidProblems.push(problemNumbers[index]);
+        console.log(`✗ Problem ${problemNumbers[index]}: Not found`);
+      }
+    });
+
+    console.log('Validation complete:', { validProblems: validProblems.length, invalidProblems });
+    return { validProblems, invalidProblems };
   }
 }

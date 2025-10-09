@@ -1,4 +1,28 @@
 // lib/utils/problemData.ts
+export interface Problem {
+  id: number;
+  title: string;
+  difficulty: 'Easy' | 'Medium' | 'Hard';
+  leetcodeNum: number;
+  points: number;
+}
+
+export interface Day {
+  topic: string;
+  problems: Problem[];
+}
+
+export interface Week {
+  title: string;
+  days: Day[];
+}
+
+export interface TrackData {
+  title: string;
+  color: string;
+  weeks: Record<string, Week>;
+  isCustom?: boolean;
+}
 export const problemData = {
   "Beginner": {
     title: "🌱 Beginner Track",

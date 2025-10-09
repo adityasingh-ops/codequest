@@ -2,8 +2,8 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useAuth } from '@/lib/hooks/useAuth';
-import { useUserData } from '@/lib/hooks/useUserData';
+import { useAuth } from '@/lib/providers/AuthProvider';
+import { useUserData } from '@/lib/providers/UserDataProvider';
 import LoginScreen from '@/components/auth/LoginSreen';
 import Header from '@/components/dashboard/Header';
 import Navigation from '@/components/dashboard/Navigation';
@@ -20,41 +20,87 @@ export default function Dashboard() {
   const {
     userStats,
     solvedProblems,
-    leaderboard,
     revisionProblems,
-    toggleRevisionStatus,
+    leaderboard,
     weeklyStreak,
-    loadUserData,
+    loading: dataLoading,
+    error,
     updateProblemStatus,
+    toggleRevisionStatus,
     updateAvatar,
     updateName
-  } = useUserData(user?.id);
+  } = useUserData();
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedAvatar, setSelectedAvatar] = useState('user');
 
   useEffect(() => {
-    if (user) {
-      loadUserData();
-    }
-  }, [user, loadUserData]);
-
-  useEffect(() => {
     if (userStats?.avatar) {
       setSelectedAvatar(userStats.avatar);
     }
-  }, [userStats]);
+  }, [userStats?.avatar]);
 
+  // Show loading spinner while authenticating
   if (authLoading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-500"></div>
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-500"></div>
+          <p className="text-gray-400">Authenticating...</p>
+        </div>
       </div>
     );
   }
 
+  // Show login screen if not authenticated
   if (!user) {
     return <LoginScreen />;
+  }
+
+  // Show loading while fetching user data
+  if (dataLoading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-cyan-500"></div>
+          <p className="text-gray-400">Loading your dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <p className="text-red-500">Error: {error}</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="px-4 py-2 bg-cyan-500 rounded hover:bg-cyan-600"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error if no user stats (shouldn't happen but good fallback)
+  if (!userStats) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <p className="text-gray-400">Unable to load user data</p>
+          <button 
+            onClick={() => window.location.reload()} 
+            className="px-4 py-2 bg-cyan-500 rounded hover:bg-cyan-600"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
   }
 
   const renderTabContent = () => {
@@ -69,11 +115,11 @@ export default function Dashboard() {
             className="space-y-6"
           >
             <RaceTrack 
-              solvedCount={userStats?.solved_count || 0}
+              solvedCount={userStats.solved_count}
               avatar={selectedAvatar}
             />
             <WeeklyStreak 
-              streak={userStats?.streak || 0}
+              streak={userStats.streak}
               weeklyStreak={weeklyStreak}
             />
             <StatsCards 
@@ -90,7 +136,8 @@ export default function Dashboard() {
             revisionProblems={revisionProblems}
             toggleRevisionStatus={toggleRevisionStatus}
             onProblemToggle={updateProblemStatus}
-            leetcodeUsername={userStats?.leetcode_username}
+            leetcodeUsername={userStats.leetcode_username}
+            userId={user.id}
           />
         );
       
@@ -118,7 +165,7 @@ export default function Dashboard() {
         return (
           <RevisionTab 
             revisionProblems={revisionProblems}
-            leetcodeUsername={userStats?.leetcode_username}
+            leetcodeUsername={userStats.leetcode_username}
           />
         );
       
