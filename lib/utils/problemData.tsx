@@ -166,7 +166,6 @@ export const problemData = {
             {id: 922, title: "Sort Array By Parity II", difficulty: "Easy", leetcodeNum: 922, points: 10}
           ]},
           { topic: "Sorting Applications", problems: [
-            {id: 252, title: "Meeting Rooms", difficulty: "Easy", leetcodeNum: 252, points: 10},
             {id: 179, title: "Largest Number", difficulty: "Medium", leetcodeNum: 179, points: 15},
             {id: 1122, title: "Relative Sort Array", difficulty: "Easy", leetcodeNum: 1122, points: 10},
             {id: 1051, title: "Height Checker", difficulty: "Easy", leetcodeNum: 1051, points: 10}
