@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react';
-import { problemData,type Problem, type TrackData } from '@/lib/utils/problemData';
+import { problemData,type Problem, type TrackData,  } from '@/lib/utils/problemData';
 import ProblemCard from './ProblemCard';
 import CustomTrackModal from './CustomTrackModel';
 import { getCustomTracks } from '@/lib/services/customTrack';
@@ -221,10 +221,15 @@ const handleDeleteTrack = async (trackName: string) => {
                       <ChevronDown className="w-5 h-5 text-cyan-400" /> : 
                       <ChevronRight className="w-5 h-5 text-gray-400" />
                     }
-                    <span className="font-bold text-white">{weekKey}: {week.title}</span>
+                    <span className="font-bold text-white">{weekKey}: {(week as any)?.title ?? ''}</span>
                   </div>
                   <span className="text-sm text-gray-400">
-                    {week.days.reduce((acc, day) => acc + day.problems.length, 0)} problems
+                    {Array.isArray((week as any)?.days)
+                      ? ((week as { days: { problems: any[] }[] }).days || []).reduce(
+                          (acc: number, day: { problems: any[] }) => acc + (Array.isArray(day.problems) ? day.problems.length : 0), 
+                          0
+                        )
+                      : 0} problems
                   </span>
                 </button>
 
@@ -237,13 +242,13 @@ const handleDeleteTrack = async (trackName: string) => {
                       transition={{ duration: 0.3 }}
                       className="overflow-hidden"
                     >
-                      {week.days.map((day, dayIdx) => (
+                      {((week as { days: { problems: any[] }[] }).days || []).map((day, dayIdx) => (
                         <div key={dayIdx} className="border-t border-gray-800">
                           <div className="px-4 py-3 bg-gray-800/30">
                             <p className="text-sm font-medium text-gray-300">{day.topic}</p>
                           </div>
                           <div className="divide-y divide-gray-800">
-                            {day.problems.map(problem => (
+                            {((day as { problems: any[] }).problems || []).map(problem => (
                               <ProblemCard
                                 key={problem.id}
                                 problem={problem}
