@@ -22,6 +22,8 @@ interface UserDataContextType {
   solvedProblems: Set<number>;
   revisionProblems: Set<number>;
   leaderboard: any[];
+  user:any[];
+  OtherUsers: any[];
   weeklyStreak: any[];
   loading: boolean;
   error: string | null;
@@ -40,6 +42,7 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
   const [solvedProblems, setSolvedProblems] = useState<Set<number>>(new Set());
   const [revisionProblems, setRevisionProblems] = useState<Set<number>>(new Set());
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [OtherUsers, setOtherUsers] = useState<any[]>([]);
   const [weeklyStreak, setWeeklyStreak] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +61,21 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
       console.error('Error loading leaderboard:', err);
     }
   }, []);
+    const loadUser= useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('user_stats')
+        .select('*')
+        .order('points', { ascending: false });
+      
+      if (error) throw error;
+      setOtherUsers(data || []);
+    } catch (err) {
+      console.error('Error loading Users:', err);
+    }
+  }, []);
+
+
 
   const loadUserData = useCallback(async (userId: string) => {
     try {
@@ -146,6 +164,7 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
       setSolvedProblems(new Set());
       setRevisionProblems(new Set());
       setLeaderboard([]);
+      setOtherUsers([]);
       setWeeklyStreak([]);
       setLoading(false);
     }
@@ -317,6 +336,7 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
     solvedProblems,
     revisionProblems,
     leaderboard,
+    OtherUsers,
     weeklyStreak,
     loading,
     error,

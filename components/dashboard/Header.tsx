@@ -5,15 +5,8 @@ import { motion } from 'framer-motion';
 import { Code2, Trophy, Flame, CheckCircle2, LogOut } from 'lucide-react';
 import { getAvatarComponent } from '@/lib/utils/avatars';
 import AvatarPicker from '../profile/AvatarPicker';
+import { HeaderProps } from '@/lib/types/dashboard';
 
-interface HeaderProps {
-  user: any;
-  userStats: any;
-  leaderboard: any[];
-  selectedAvatar: string;
-  onAvatarChange: (avatarId: string) => void;
-  onSignOut: () => void;
-}
 
 export default function Header({ 
   user, 
@@ -23,9 +16,9 @@ export default function Header({
   onAvatarChange,
   onSignOut 
 }: HeaderProps) {
+  
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
-  const { IconComponent: CurrentAvatarIcon, color: currentAvatarColor } = 
-    getAvatarComponent(selectedAvatar);
+  const { IconComponent: CurrentAvatarIcon, color: currentAvatarColor } = getAvatarComponent(selectedAvatar);
 
   return (
     <>

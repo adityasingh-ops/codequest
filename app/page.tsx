@@ -14,6 +14,7 @@ import ProblemsTab from '@/components/problems/ProblemTab';
 import LeaderboardTab from '@/components/leaderboard/Leaderboard';
 import ProfileTab from '@/components/profile/ProfileTab';
 import RevisionTab from '@/components/revision/RevisionTab';
+import UserTab from '@/components/Users/UserTab';
 
 export default function Dashboard() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -22,6 +23,7 @@ export default function Dashboard() {
     solvedProblems,
     revisionProblems,
     leaderboard,
+    OtherUsers,
     weeklyStreak,
     loading: dataLoading,
     error,
@@ -166,6 +168,13 @@ export default function Dashboard() {
           <RevisionTab 
             revisionProblems={revisionProblems}
             leetcodeUsername={userStats.leetcode_username}
+          />
+        );
+
+      case 'users':
+        return (
+          <UserTab 
+            users={OtherUsers}
           />
         );
       

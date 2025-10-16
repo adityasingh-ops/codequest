@@ -137,7 +137,7 @@ const handleDeleteTrack = async (trackName: string) => {
         exit={{ opacity: 0, y: -20 }}
       >
         {/* Track Selection */}
-        {/* <div className="mb-6">
+        <div className="mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-white">Select Track</h2>
             {userId && (
@@ -203,7 +203,7 @@ const handleDeleteTrack = async (trackName: string) => {
               </button>
             ))}
           </div>
-        </div> */}
+        </div>
 
         {/* Problems List */}
         <div className="space-y-4">

@@ -23,6 +23,88 @@ export interface TrackData {
   weeks: Record<string, Week>;
   isCustom?: boolean;
 }
+export interface JenkinsTask {
+  id: string;
+  user_id: string;
+  task_id: string;
+  phase: string;
+  week: string;
+  day_number: number;
+  title: string;
+  description?: string;
+  estimated_hours: number;
+  completed: boolean;
+  completed_at?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JenkinsContribution {
+  id: string;
+  user_id: string;
+  type: 'pr' | 'blog' | 'plugin' | 'project' | 'community';
+  title: string;
+  description?: string;
+  url?: string;
+  status: 'in_progress' | 'submitted' | 'merged' | 'published';
+  created_at: string;
+  completed_at?: string;
+}
+
+export interface JenkinsStats {
+  id: string;
+  user_id: string;
+  total_tasks_completed: number;
+  total_hours_logged: number;
+  current_streak: number;
+  longest_streak: number;
+  prs_merged: number;
+  prs_submitted: number;
+  blogs_published: number;
+  plugins_created: number;
+  projects_completed: number;
+  last_activity_date: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JenkinsDailyLog {
+  id: string;
+  user_id: string;
+  log_date: string;
+  hours_logged: number;
+  tasks_completed: string[];
+  notes?: string;
+  created_at: string;
+}
+
+export interface DayTask {
+  taskId: string;
+  title: string;
+  description: string;
+  estimatedHours: number;
+  deliverable: string;
+  resources?: string[];
+}
+
+export interface WeekData {
+  title: string;
+  goal: string;
+  days: DayTask[];
+}
+
+export interface PhaseData {
+  title: string;
+  duration: string;
+  focus: string;
+  outcome: string;
+  weeks: { [key: string]: WeekData };
+}
+
+export type JenkinsRoadmapData = {
+  [key: string]: PhaseData;
+};
 
 export const problemData = {
   "Beginner": {
