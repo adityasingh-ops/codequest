@@ -15,6 +15,7 @@ import LeaderboardTab from '@/components/leaderboard/Leaderboard';
 import ProfileTab from '@/components/profile/ProfileTab';
 import RevisionTab from '@/components/revision/RevisionTab';
 import UserTab from '@/components/Users/UserTab';
+import RaceTrackDashboard from '@/components/dashboard/RaceTrack';
 
 export default function Dashboard() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -35,6 +36,7 @@ export default function Dashboard() {
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedAvatar, setSelectedAvatar] = useState('user');
+  const [activeUserTab, setActiveUserTab] = useState<'followers' | 'following' | 'discover'>('discover');
 
   useEffect(() => {
     if (userStats?.avatar) {
@@ -116,8 +118,9 @@ export default function Dashboard() {
             exit={{ opacity: 0, y: -20 }}
             className="space-y-6"
           >
-            <RaceTrack 
-              solvedCount={userStats.solved_count}
+            <RaceTrackDashboard
+              raceId={user.id || ''}
+              solvedCount={userStats.solved_count || 0}
               avatar={selectedAvatar}
             />
             <WeeklyStreak 
@@ -174,7 +177,7 @@ export default function Dashboard() {
       case 'users':
         return (
           <UserTab 
-            users={OtherUsers}
+            activeTab={activeUserTab}
           />
         );
       
