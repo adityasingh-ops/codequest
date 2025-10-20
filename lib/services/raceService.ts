@@ -1,6 +1,6 @@
 // lib/services/raceService.ts
 import { supabase } from '@/lib/supabase/client';
-import { sendRaceCreatedNotification } from './notificationService';
+import { sendTeamInvite } from './notificationService';
 import { RealtimeChannel } from '@supabase/supabase-js';
 
 let raceChannel: RealtimeChannel | null = null;
@@ -45,7 +45,7 @@ export const createRace = async (
   }
 
   // Send notifications
-  await sendRaceCreatedNotification(data.id, teamId, createdByUserId);
+  await sendTeamInvite(createdByUserId, teamId, createdByUserId);
 
   return data;
 };

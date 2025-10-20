@@ -2,7 +2,7 @@
 "use client";
 import React from 'react';
 import { motion } from 'framer-motion';
-import { LayoutDashboard, Code2, Trophy, User, Brain, Users } from 'lucide-react';
+import { LayoutDashboard, Code2, Trophy, User, Brain, Users, UsersRound } from 'lucide-react';
 
 interface NavigationProps {
   activeTab: string;
@@ -14,6 +14,7 @@ export default function Navigation({ activeTab, onTabChange }: NavigationProps) 
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'problems', label: 'Problems', icon: Code2 },
     { id: 'leaderboard', label: 'Leaderboard', icon: Trophy },
+    { id: 'teams', label: 'Teams', icon: UsersRound },
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'revision', label: 'Revision', icon: Brain },
     { id: 'users', label: 'Users', icon: Users }

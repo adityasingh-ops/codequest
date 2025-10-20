@@ -1,9 +1,11 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ChevronRight, Search, Users, UserPlus, UserCheck } from 'lucide-react';
+import { ChevronRight, Search, Users, UserPlus, UserCheck, UserMinus } from 'lucide-react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from '@/lib/providers/AuthProvider';
+import { sendFollowNotification } from '@/lib/services/notificationService';
+import { getAvatarComponent } from '@/lib/utils/avatars';
 
 interface UserProfile {
   user_id: string;
@@ -11,6 +13,8 @@ interface UserProfile {
   points: number;
   avatar: string;
   leetcode_username?: string;
+  streak?: number;
+  solved_count?: number;
 }
 
 export default function FollowersTab({ activeTab }: { activeTab: 'followers' | 'following' | 'discover' }) {
@@ -18,6 +22,7 @@ export default function FollowersTab({ activeTab }: { activeTab: 'followers' | '
   const [searchQuery, setSearchQuery] = useState('');
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [followingIds, setFollowingIds] = useState<Set<string>>(new Set());
+  const [followerIds, setFollowerIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
 
   // Load followers
@@ -26,12 +31,16 @@ export default function FollowersTab({ activeTab }: { activeTab: 'followers' | '
     try {
       const { data, error } = await supabase
         .from('followers')
-        .select('follower_id, user_stats(*)')
+        .select(`
+          follower_id,
+          user_stats!followers_follower_id_fkey(*)
+        `)
         .eq('following_id', user.id);
 
       if (error) throw error;
       const followersList = data?.map(f => f.user_stats).filter(Boolean) || [];
       setUsers(followersList);
+      setFollowerIds(new Set(followersList.map(u => u.user_id)));
     } catch (err) {
       console.error('Error loading followers:', err);
     } finally {
@@ -45,7 +54,10 @@ export default function FollowersTab({ activeTab }: { activeTab: 'followers' | '
     try {
       const { data, error } = await supabase
         .from('followers')
-        .select('following_id, user_stats(*)')
+        .select(`
+          following_id,
+          user_stats!followers_following_id_fkey(*)
+        `)
         .eq('follower_id', user.id);
 
       if (error) throw error;
@@ -79,12 +91,89 @@ export default function FollowersTab({ activeTab }: { activeTab: 'followers' | '
         .eq('follower_id', user.id);
 
       setFollowingIds(new Set(followingData?.map(f => f.following_id) || []));
+
+      // Load who follows the user
+      const { data: followerData } = await supabase
+        .from('followers')
+        .select('follower_id')
+        .eq('following_id', user.id);
+
+      setFollowerIds(new Set(followerData?.map(f => f.follower_id) || []));
     } catch (err) {
       console.error('Error loading discover:', err);
     } finally {
       setLoading(false);
     }
   };
+
+  // Subscribe to real-time updates for followers
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel(`followers:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'followers',
+          filter: `following_id=eq.${user.id}`
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            // New follower
+            setFollowerIds(prev => new Set(prev).add(payload.new.follower_id));
+            if (activeTab === 'followers') {
+              loadFollowers();
+            }
+          } else if (payload.eventType === 'DELETE') {
+            // Unfollowed
+            setFollowerIds(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(payload.old.follower_id);
+              return newSet;
+            });
+            if (activeTab === 'followers') {
+              loadFollowers();
+            }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'followers',
+          filter: `follower_id=eq.${user.id}`
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            // User followed someone
+            setFollowingIds(prev => new Set(prev).add(payload.new.following_id));
+            if (activeTab === 'following') {
+              loadFollowing();
+            }
+          } else if (payload.eventType === 'DELETE') {
+            // User unfollowed someone
+            setFollowingIds(prev => {
+              const newSet = new Set(prev);
+              newSet.delete(payload.old.following_id);
+              return newSet;
+            });
+            if (activeTab === 'following') {
+              loadFollowing();
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, activeTab]);
 
   useEffect(() => {
     setLoading(true);
@@ -128,6 +217,9 @@ export default function FollowersTab({ activeTab }: { activeTab: 'followers' | '
 
         if (error) throw error;
         setFollowingIds(prev => new Set(prev).add(targetUserId));
+
+        // Send notification
+        await sendFollowNotification(targetUserId, user.id);
       }
     } catch (err) {
       console.error('Error updating follow status:', err);
@@ -156,8 +248,8 @@ export default function FollowersTab({ activeTab }: { activeTab: 'followers' | '
                 {activeTab === 'discover' && 'Discover'}
               </h2>
               <p className="text-sm text-gray-400 mt-1">
-                {activeTab === 'followers' && 'People following you'}
-                {activeTab === 'following' && 'People you follow'}
+                {activeTab === 'followers' && `${users.length} people following you`}
+                {activeTab === 'following' && `${users.length} people you follow`}
                 {activeTab === 'discover' && 'Connect with other coders'}
               </p>
             </div>
@@ -183,57 +275,82 @@ export default function FollowersTab({ activeTab }: { activeTab: 'followers' | '
             </div>
           ) : filteredUsers.length === 0 ? (
             <div className="p-8 text-center text-gray-400">
+              <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p>No users found</p>
             </div>
           ) : (
-            filteredUsers.map((userItem, index) => (
-              <div
-                key={userItem.user_id}
-                className="p-4 flex items-center gap-4 hover:bg-gray-900/50 transition-colors"
-              >
-                <div className="w-12 flex justify-center text-gray-500 text-sm">
-                  {index + 1}
-                </div>
-                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-                  <Users className="w-6 h-6 text-white" />
-                </div>
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="font-bold text-white">{userItem.name}</p>
-                  </div>
-                  <p className="text-sm text-gray-400">
-                    {userItem.leetcode_username || 'No username'}
-                  </p>
-                </div>
-                <div className="text-right mr-4">
-                  <p className="text-sm font-semibold text-cyan-400">
-                    {userItem.points} pts
-                  </p>
-                </div>
+            filteredUsers.map((userItem, index) => {
+              const { IconComponent, color } = getAvatarComponent(userItem.avatar || 'user');
+              const isFollowing = followingIds.has(userItem.user_id);
+              const isFollower = followerIds.has(userItem.user_id);
 
-                {/* Follow Button */}
-                {activeTab === 'discover' && (
+              return (
+                <motion.div
+                  key={userItem.user_id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                  className="p-4 flex items-center gap-4 hover:bg-gray-900/50 transition-colors"
+                >
+                  <div className="w-12 flex justify-center text-gray-500 text-sm">
+                    {index + 1}
+                  </div>
+
+                  {/* Avatar */}
+                  <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${color} flex items-center justify-center flex-shrink-0`}>
+                    <IconComponent className="w-6 h-6 text-white" />
+                  </div>
+
+                  {/* User Info */}
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-white">{userItem.name}</p>
+                      {isFollower && (
+                        <span className="text-xs px-2 py-0.5 bg-cyan-500/20 border border-cyan-500/30 rounded text-cyan-400">
+                          Follows you
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-400 mt-0.5">
+                      {userItem.leetcode_username || 'No username'}
+                    </p>
+                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                      <span>🔥 {userItem.streak || 0} streak</span>
+                      <span>✓ {userItem.solved_count || 0} solved</span>
+                    </div>
+                  </div>
+
+                  {/* Points */}
+                  <div className="text-right mr-4">
+                    <p className="text-sm font-semibold text-cyan-400">
+                      {userItem.points} pts
+                    </p>
+                  </div>
+
+                  {/* Follow Button */}
                   <button
                     onClick={() => handleFollow(userItem.user_id)}
-                    className={`p-2 rounded-lg transition-all ${
-                      followingIds.has(userItem.user_id)
-                        ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50'
-                        : 'bg-gray-800 text-gray-400 border border-gray-700 hover:bg-gray-700'
+                    className={`px-4 py-2 rounded-lg transition-all font-medium text-sm flex items-center gap-2 ${
+                      isFollowing
+                        ? 'bg-gray-800 text-gray-300 border border-gray-700 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/50'
+                        : 'bg-cyan-500 text-white hover:bg-cyan-600'
                     }`}
                   >
-                    {followingIds.has(userItem.user_id) ? (
-                      <UserCheck className="w-5 h-5" />
+                    {isFollowing ? (
+                      <>
+                        <UserCheck className="w-4 h-4" />
+                        <span className="hidden sm:inline">Following</span>
+                      </>
                     ) : (
-                      <UserPlus className="w-5 h-5" />
+                      <>
+                        <UserPlus className="w-4 h-4" />
+                        <span className="hidden sm:inline">Follow</span>
+                      </>
                     )}
                   </button>
-                )}
-
-                {activeTab !== 'discover' && (
-                  <ChevronRight className="w-5 h-5 text-gray-500" />
-                )}
-              </div>
-            ))
+                </motion.div>
+              );
+            })
           )}
         </div>
       </div>

@@ -1,146 +1,41 @@
-// lib/services/notificationService.ts
+// lib/services/notificationService.ts - COMPLETE VERSION
 import { supabase } from '@/lib/supabase/client';
-import { RealtimeChannel } from '@supabase/supabase-js';
 
-interface Notification {
-  id: string;
+interface NotificationPayload {
   from_user_id: string;
   to_user_id: string;
-  type: 'team_invite' | 'team_accepted' | 'race_created' | 'race_joined';
+  type: string;
+  content: string;
   team_id?: string;
   race_id?: string;
-  content: string;
-  is_read: boolean;
-  created_at: string;
-  user_stats?: { name: string; avatar: string };
 }
 
-let notificationChannel: RealtimeChannel | null = null;
-
-export const subscribeToNotifications = (
-  userId: string,
-  onNewNotification: (notification: Notification) => void
-) => {
-  if (notificationChannel) {
-    notificationChannel.unsubscribe();
-  }
-
-  notificationChannel = supabase
-    .channel(`notifications:${userId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'notifications',
-        filter: `to_user_id=eq.${userId}`
-      },
-      (payload) => {
-        onNewNotification(payload.new as Notification);
-      }
-    )
-    .subscribe();
-
-  return () => {
-    if (notificationChannel) {
-      notificationChannel.unsubscribe();
-    }
-  };
-};
-
-export const getNotifications = async (userId: string, limit = 50) => {
+// ============================================
+// FETCH NOTIFICATIONS
+// ============================================
+export const getNotifications = async (userId: string) => {
   const { data, error } = await supabase
     .from('notifications')
     .select(`
       *,
-      user_stats!from_user_id(name, avatar)
+      from_user:from_user_id(
+        user_stats!inner(name, avatar)
+      ),
+      teams(team_name, avatar)
     `)
     .eq('to_user_id', userId)
     .order('created_at', { ascending: false })
-    .limit(limit);
+    .limit(50);
 
-  if (error) throw error;
-  return data as Notification[];
-};
-
-export const markAsRead = async (notificationId: string) => {
-  const { error } = await supabase
-    .from('notifications')
-    .update({ is_read: true })
-    .eq('id', notificationId);
-
-  if (error) throw error;
-};
-
-export const markAllAsRead = async (userId: string) => {
-  const { error } = await supabase
-    .from('notifications')
-    .update({ is_read: true })
-    .eq('to_user_id', userId)
-    .eq('is_read', false);
-
-  if (error) throw error;
-};
-
-export const sendTeamInvite = async (
-  toUserId: string,
-  teamId: string,
-  invitedByUserId: string
-) => {
-  const { data: team } = await supabase
-    .from('teams')
-    .select('team_name')
-    .eq('id', teamId)
-    .single();
-
-  const { error } = await supabase
-    .from('notifications')
-    .insert({
-      from_user_id: invitedByUserId,
-      to_user_id: toUserId,
-      type: 'team_invite',
-      team_id: teamId,
-      content: `You have been invited to join the team "${team?.team_name}"`
-    });
-
-  if (error) throw error;
-};
-
-export const sendRaceCreatedNotification = async (
-  raceId: string,
-  teamId: string,
-  createdByUserId: string
-) => {
-  // Get all team members except creator
-  const { data: members } = await supabase
-    .from('team_members')
-    .select('user_id')
-    .eq('team_id', teamId)
-    .neq('user_id', createdByUserId);
-
-  const { data: race } = await supabase
-    .from('races')
-    .select('race_name')
-    .eq('id', raceId)
-    .single();
-
-  // Send notifications to all team members
-  const notifications = (members || []).map((member) => ({
-    from_user_id: createdByUserId,
-    to_user_id: member.user_id,
-    type: 'race_created',
-    race_id: raceId,
-    team_id: teamId,
-    content: `A new race "${race?.race_name}" has been created in your team`
-  }));
-
-  if (notifications.length > 0) {
-    const { error } = await supabase
-      .from('notifications')
-      .insert(notifications);
-
-    if (error) throw error;
+  if (error) {
+    console.error('Error fetching notifications:', error);
+    return [];
   }
+
+  return (data || []).map(notif => ({
+    ...notif,
+    user_stats: notif.from_user?.[0]?.user_stats || { name: 'Unknown', avatar: 'user' }
+  }));
 };
 
 export const getUnreadCount = async (userId: string) => {
@@ -150,6 +45,307 @@ export const getUnreadCount = async (userId: string) => {
     .eq('to_user_id', userId)
     .eq('is_read', false);
 
-  if (error) throw error;
+  if (error) {
+    console.error('Error fetching unread count:', error);
+    return 0;
+  }
+
   return count || 0;
+};
+
+// ============================================
+// MARK AS READ
+// ============================================
+export const markAsRead = async (notificationId: string) => {
+  const { error } = await supabase
+    .from('notifications')
+    .update({ is_read: true, updated_at: new Date().toISOString() })
+    .eq('id', notificationId);
+
+  if (error) throw error;
+};
+
+export const markAllAsRead = async (userId: string) => {
+  const { error } = await supabase
+    .from('notifications')
+    .update({ is_read: true, updated_at: new Date().toISOString() })
+    .eq('to_user_id', userId)
+    .eq('is_read', false);
+
+  if (error) throw error;
+};
+
+export const deleteNotification = async (notificationId: string) => {
+  const { error } = await supabase
+    .from('notifications')
+    .delete()
+    .eq('id', notificationId);
+
+  if (error) throw error;
+};
+
+// ============================================
+// REAL-TIME SUBSCRIPTION
+// ============================================
+export const subscribeToNotifications = (
+  userId: string,
+  onNotification: (notification: any) => void
+) => {
+  const channel = supabase
+    .channel(`notifications:${userId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'notifications',
+        filter: `to_user_id=eq.${userId}`
+      },
+      async (payload) => {
+        // Fetch the complete notification with user stats
+        const { data } = await supabase
+          .from('notifications')
+          .select(`
+            *,
+            from_user:from_user_id(
+              user_stats!inner(name, avatar)
+            ),
+            teams(team_name, avatar)
+          `)
+          .eq('id', payload.new.id)
+          .single();
+
+        if (data) {
+          const formattedNotification = {
+            ...data,
+            user_stats: data.from_user?.[0]?.user_stats || { name: 'Unknown', avatar: 'user' }
+          };
+          onNotification(formattedNotification);
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+};
+
+// ============================================
+// SEND NOTIFICATIONS
+// ============================================
+
+// Team Invite
+export const sendTeamInvite = async (
+  toUserId: string,
+  teamId: string,
+  fromUserId: string
+) => {
+  const { error } = await supabase
+    .from('notifications')
+    .insert({
+      from_user_id: fromUserId,
+      to_user_id: toUserId,
+      type: 'team_invite',
+      team_id: teamId,
+      content: 'invited you to join their team',
+      is_read: false
+    });
+
+  if (error) throw error;
+};
+
+// Team Accepted
+export const sendTeamAccepted = async (
+  toUserId: string,
+  teamId: string,
+  fromUserId: string
+) => {
+  const { error } = await supabase
+    .from('notifications')
+    .insert({
+      from_user_id: fromUserId,
+      to_user_id: toUserId,
+      type: 'team_accepted',
+      team_id: teamId,
+      content: 'accepted your team invitation',
+      is_read: false
+    });
+
+  if (error) throw error;
+};
+
+// Follow Request (if you want to require approval)
+export const sendFollowRequest = async (
+  toUserId: string,
+  fromUserId: string
+) => {
+  const { error } = await supabase
+    .from('notifications')
+    .insert({
+      from_user_id: fromUserId,
+      to_user_id: toUserId,
+      type: 'follow_request',
+      content: 'wants to follow you',
+      is_read: false
+    });
+
+  if (error) throw error;
+};
+
+// Follow Notification (instant follow, no approval needed)
+export const sendFollowNotification = async (
+  toUserId: string,
+  fromUserId: string
+) => {
+  const { error } = await supabase
+    .from('notifications')
+    .insert({
+      from_user_id: fromUserId,
+      to_user_id: toUserId,
+      type: 'new_follower',
+      content: 'started following you',
+      is_read: false
+    });
+
+  if (error) throw error;
+};
+
+// Follow Back Notification
+export const sendFollowBackNotification = async (
+  toUserId: string,
+  fromUserId: string
+) => {
+  const { error } = await supabase
+    .from('notifications')
+    .insert({
+      from_user_id: fromUserId,
+      to_user_id: toUserId,
+      type: 'follow_back',
+      content: 'followed you back',
+      is_read: false
+    });
+
+  if (error) throw error;
+};
+
+// Race Invite
+export const sendRaceInvite = async (
+  toUserId: string,
+  raceId: string,
+  fromUserId: string
+) => {
+  const { error } = await supabase
+    .from('notifications')
+    .insert({
+      from_user_id: fromUserId,
+      to_user_id: toUserId,
+      type: 'race_invite',
+      race_id: raceId,
+      content: 'invited you to join a race',
+      is_read: false
+    });
+
+  if (error) throw error;
+};
+
+// Race Started
+export const sendRaceStarted = async (
+  teamId: string,
+  raceId: string,
+  fromUserId: string
+) => {
+  // Get all team members except the creator
+  const { data: members } = await supabase
+    .from('team_members')
+    .select('user_id')
+    .eq('team_id', teamId)
+    .neq('user_id', fromUserId);
+
+  if (!members) return;
+
+  const notifications = members.map(member => ({
+    from_user_id: fromUserId,
+    to_user_id: member.user_id,
+    type: 'race_started',
+    race_id: raceId,
+    team_id: teamId,
+    content: 'started a new race',
+    is_read: false
+  }));
+
+  const { error } = await supabase
+    .from('notifications')
+    .insert(notifications);
+
+  if (error) throw error;
+};
+
+// Member Joined Team
+export const sendMemberJoined = async (
+  teamId: string,
+  newMemberId: string,
+  newMemberName: string
+) => {
+  // Get all team members except the new member
+  const { data: members } = await supabase
+    .from('team_members')
+    .select('user_id')
+    .eq('team_id', teamId)
+    .neq('user_id', newMemberId);
+
+  if (!members) return;
+
+  const notifications = members.map(member => ({
+    from_user_id: newMemberId,
+    to_user_id: member.user_id,
+    type: 'member_joined',
+    team_id: teamId,
+    content: 'joined the team',
+    is_read: false
+  }));
+
+  const { error } = await supabase
+    .from('notifications')
+    .insert(notifications);
+
+  if (error) throw error;
+};
+
+// Achievement Unlocked
+export const sendAchievementNotification = async (
+  userId: string,
+  achievementName: string
+) => {
+  const { error } = await supabase
+    .from('notifications')
+    .insert({
+      from_user_id: userId,
+      to_user_id: userId,
+      type: 'achievement',
+      content: `unlocked "${achievementName}"`,
+      is_read: false
+    });
+
+  if (error) throw error;
+};
+
+// Rank Change
+export const sendRankChangeNotification = async (
+  userId: string,
+  newRank: number,
+  oldRank: number
+) => {
+  const direction = newRank < oldRank ? 'up' : 'down';
+  const { error } = await supabase
+    .from('notifications')
+    .insert({
+      from_user_id: userId,
+      to_user_id: userId,
+      type: 'rank_change',
+      content: `moved ${direction} to rank #${newRank}`,
+      is_read: false
+    });
+
+  if (error) throw error;
 };

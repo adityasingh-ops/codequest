@@ -26,7 +26,7 @@ export const createTeam = async (
     .insert({
       team_id: data.id,
       user_id: creatorId,
-      role: 'creator'
+      role: 'creator',
     });
 
   return data;
@@ -69,7 +69,6 @@ export const getTeamDetails = async (teamId: string) => {
   if (error) throw error;
   return data;
 };
-
 export const inviteUserToTeam = async (
   teamId: string,
   userEmail: string,
@@ -78,7 +77,7 @@ export const inviteUserToTeam = async (
   // Get user by email
   const { data: userData, error: userError } = await supabase
     .from('user_stats')
-    .select('user_id')
+    .select('user_id, email')
     .ilike('email', userEmail)
     .single();
 
@@ -88,7 +87,51 @@ export const inviteUserToTeam = async (
 
   const toUserId = userData.user_id;
 
-  // Create invitation
+  // Check if user is already a team member
+  const { data: existingMember } = await supabase
+    .from('team_members')
+    .select('id')
+    .eq('team_id', teamId)
+    .eq('user_id', toUserId)
+    .single();
+
+  if (existingMember) {
+    throw new Error('User is already a team member');
+  }
+
+  // Check if there's already a pending invitation
+  const { data: existingInvitation } = await supabase
+    .from('team_invitations')
+    .select('id, status')
+    .eq('team_id', teamId)
+    .eq('invited_user_id', toUserId)
+    .single();
+
+  if (existingInvitation) {
+    if (existingInvitation.status === 'pending') {
+      throw new Error('User has already been invited to this team');
+    } else if (existingInvitation.status === 'declined') {
+      // If previously declined, update the invitation instead of creating new one
+      const { data: invitation, error: updateError } = await supabase
+        .from('team_invitations')
+        .update({
+          status: 'pending',
+          invited_by_id: invitedByUserId,
+          created_at: new Date().toISOString(),
+          responded_at: null
+        })
+        .eq('id', existingInvitation.id)
+        .select()
+        .single();
+
+      if (updateError) throw updateError;
+
+      await sendTeamInvite(toUserId, teamId, invitedByUserId);
+      return invitation;
+    }
+  }
+
+  // Create new invitation
   const { data: invitation, error: invitationError } = await supabase
     .from('team_invitations')
     .insert({

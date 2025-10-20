@@ -1,450 +1,738 @@
 "use client";
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
-import {
-  Plus,
-  Users,
-  Mail,
-  X,
-  Settings,
-  LogOut,
-  Trash2,
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+  Plus, FileText, Users, Trophy, Copy, Check, X, 
+  Code2, ExternalLink, Loader2, Filter, Share2 
 } from 'lucide-react';
 import { useAuth } from '@/lib/providers/AuthProvider';
+import { getAvatarComponent } from '@/lib/utils/avatars';
+import { getDifficultyColor } from '@/lib/utils/helper';
+import { 
+  PROBLEM_SETS, 
+  PLATFORM_INFO, 
+  getProblemsByPlatform} from '@/lib/utils/problemSet';
 import {
-  createTeam,
-  getTeamsByUserId,
-  getTeamDetails,
-  inviteUserToTeam,
-  leaveTeam,
-  removeTeamMember,
-} from '@/lib/services/teamService';
+  createTeamSheet,
+  getTeamSheets,
+  getSheetProgress,
+  toggleProblemSolved,
+  getSheetLeaderboard,
+  generateTeamJoinCode,
+  subscribeToSheetProgress
+} from '@/lib/services/teamSheet';
 
-interface Team {
-  id: string;
-  team_name: string;
-  description: string;
-  avatar: string;
-  creator_id: string;
-  created_at: string;
+interface TeamSheetManagementProps {
+  teamId: string;
+  isAdmin: boolean;
 }
 
-interface TeamMember {
-  user_id: string;
-  role: string;
-  user_stats?: {
-    name: string;
-    avatar: string;
-    points: number;
-  };
-}
-
-export default function TeamManagement() {
+export default function TeamSheetManagement({ teamId, isAdmin }: TeamSheetManagementProps) {
   const { user } = useAuth();
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [selectedTeam, setSelectedTeam] = useState<any>(null);
+  const [sheets, setSheets] = useState<any[]>([]);
+  const [selectedSheet, setSelectedSheet] = useState<any>(null);
+  const [userProgress, setUserProgress] = useState<Map<number, any>>(new Map());
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showInviteModal, setShowInviteModal] = useState(false);
-  const [teamName, setTeamName] = useState('');
-  const [teamDescription, setTeamDescription] = useState('');
-  const [inviteEmail, setInviteEmail] = useState('');
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
+  const [copied, setCopied] = useState(false);
+  
+  // Create sheet form
+  const [sheetName, setSheetName] = useState('');
+  const [description, setDescription] = useState('');
+  const [selectedPlatform, setSelectedPlatform] = useState('leetcode');
+  const [selectedProblems, setSelectedProblems] = useState<Set<number>>(new Set());
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [filterDifficulty, setFilterDifficulty] = useState('All');
 
-  // Load user's teams
+  // Load sheets
   useEffect(() => {
-    if (!user?.id) return;
+    if (!teamId) return;
+    loadSheets();
+  }, [teamId]);
 
-    const loadTeams = async () => {
-      try {
-        const userTeams = await getTeamsByUserId(user.id);
-        setTeams(userTeams);
-        if (userTeams.length > 0) {
-          const details = await getTeamDetails(userTeams[0].id);
-          setSelectedTeam(details);
-        }
-      } catch (err) {
-        console.error('Error loading teams:', err);
-        setError('Failed to load teams');
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Load user progress for selected sheet
+  useEffect(() => {
+    if (!selectedSheet || !user?.id) return;
+    loadProgress();
+    loadLeaderboard();
+  }, [selectedSheet, user?.id]);
 
-    loadTeams();
-  }, [user?.id]);
+  // Real-time subscription
+  useEffect(() => {
+    if (!selectedSheet) return;
 
-  const handleCreateTeam = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user?.id || !teamName.trim()) return;
+    const unsubscribe = subscribeToSheetProgress(selectedSheet.id, async () => {
+      await loadProgress();
+      await loadLeaderboard();
+    });
 
-    setLoading(true);
+    return unsubscribe;
+  }, [selectedSheet]);
+
+  const loadSheets = async () => {
     try {
-      const newTeam = await createTeam(
-        teamName.trim(),
-        user.id,
-        teamDescription.trim()
-      );
-      setTeams((prev) => [...prev, newTeam]);
-      setSelectedTeam(newTeam);
-      setTeamName('');
-      setTeamDescription('');
-      setShowCreateModal(false);
-      setSuccess('Team created successfully!');
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err: any) {
-      setError(err.message || 'Failed to create team');
+      const data = await getTeamSheets(teamId);
+      setSheets(data);
+      if (data.length > 0 && !selectedSheet) {
+        setSelectedSheet(data[0]);
+      }
+    } catch (err) {
+      console.error('Error loading sheets:', err);
+      setError('Failed to load sheets');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleInviteUser = async (e: React.FormEvent) => {
+  const loadProgress = async () => {
+    if (!selectedSheet || !user?.id) return;
+    try {
+      const progress = await getSheetProgress(selectedSheet.id, user.id);
+      const progressMap = new Map();
+      progress.forEach((p: any) => {
+        progressMap.set(p.problem_id, p);
+      });
+      setUserProgress(progressMap);
+    } catch (err) {
+      console.error('Error loading progress:', err);
+    }
+  };
+
+  const loadLeaderboard = async () => {
+    if (!selectedSheet) return;
+    try {
+      const data = await getSheetLeaderboard(selectedSheet.id);
+      setLeaderboard(data);
+    } catch (err) {
+      console.error('Error loading leaderboard:', err);
+    }
+  };
+
+  const handleCreateSheet = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user?.id || !selectedTeam || !inviteEmail.trim()) return;
+    if (!user?.id || selectedProblems.size === 0) {
+      setError('Please select at least one problem');
+      return;
+    }
 
     setLoading(true);
+    setError('');
     try {
-      await inviteUserToTeam(
-        selectedTeam.id,
-        inviteEmail.trim(),
+      const allProblems = getProblemsByPlatform(selectedPlatform);
+      const problems = allProblems.filter(p => selectedProblems.has(p.id));
+
+      const newSheet = await createTeamSheet(
+        teamId,
+        sheetName,
+        description,
+        selectedPlatform,
+        problems,
         user.id
       );
-      setInviteEmail('');
-      setShowInviteModal(false);
-      setSuccess('Invitation sent successfully!');
-      setTimeout(() => setSuccess(''), 3000);
 
-      // Reload team details
-      const details = await getTeamDetails(selectedTeam.id);
-      setSelectedTeam(details);
+      setSheets(prev => [newSheet, ...prev]);
+      setSelectedSheet(newSheet);
+      setSheetName('');
+      setDescription('');
+      setSelectedProblems(new Set());
+      setShowCreateModal(false);
+      setSuccess('Sheet created successfully! 🎉');
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
-      setError(err.message || 'Failed to send invitation');
+      setError(err.message || 'Failed to create sheet');
+      setTimeout(() => setError(''), 5000);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleLeaveTeam = async () => {
-    if (!user?.id || !selectedTeam) return;
-
-    const confirmed = window.confirm('Are you sure you want to leave this team?');
-    if (!confirmed) return;
+  const handleToggleProblem = async (problem: any) => {
+    if (!user?.id || !selectedSheet) return;
 
     try {
-      await leaveTeam(selectedTeam.id, user.id);
-      setTeams((prev) =>
-        prev.filter((team) => team.id !== selectedTeam.id)
+      await toggleProblemSolved(
+        selectedSheet.id,
+        user.id,
+        problem.id,
+        problem.platform,
+        problem.points
       );
-      setSelectedTeam(null);
-      setSuccess('Left team successfully!');
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err: any) {
-      setError(err.message || 'Failed to leave team');
+      await loadProgress();
+      await loadLeaderboard();
+    } catch (err) {
+      console.error('Error toggling problem:', err);
+      setError('Failed to update progress');
+      setTimeout(() => setError(''), 3000);
     }
   };
 
-  const handleRemoveMember = async (memberId: string) => {
-    if (!user?.id || !selectedTeam) return;
-
-    const confirmed = window.confirm('Remove this member from the team?');
-    if (!confirmed) return;
-
+  const handleGenerateJoinCode = async () => {
     try {
-      await removeTeamMember(selectedTeam.id, memberId, user.id);
-      const details = await getTeamDetails(selectedTeam.id);
-      setSelectedTeam(details);
-      setSuccess('Member removed successfully!');
-      setTimeout(() => setSuccess(''), 3000);
-    } catch (err: any) {
-      setError(err.message || 'Failed to remove member');
+      const code = await generateTeamJoinCode(teamId);
+      setJoinCode(code);
+      setShowShareModal(true);
+    } catch (err) {
+      console.error('Error generating join code:', err);
+      setError('Failed to generate join code');
     }
   };
 
-  const isTeamCreator = user?.id === selectedTeam?.creator_id;
+  const handleCopyJoinCode = () => {
+    navigator.clipboard.writeText(joinCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const problems = selectedSheet?.problems || [];
+  const filteredProblems = filterDifficulty === 'All' 
+    ? problems 
+    : problems.filter((p: any) => p.difficulty === filterDifficulty);
+
+  const userSolvedCount = Array.from(userProgress.values()).filter(p => p.solved).length;
+  const totalProblems = problems.length;
+  const progressPercentage = totalProblems > 0 ? (userSolvedCount / totalProblems) * 100 : 0;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="space-y-6"
-    >
-      {error && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400"
-        >
-          {error}
-        </motion.div>
-      )}
+    <div className="space-y-6">
+      {/* Error/Success Messages */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="p-4 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 flex items-center gap-2"
+          >
+            <X className="w-5 h-5" />
+            {error}
+          </motion.div>
+        )}
+        {success && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="p-4 bg-green-500/20 border border-green-500/50 rounded-lg text-green-400"
+          >
+            {success}
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {success && (
-        <motion.div
-          initial={{ opacity: 0, y: -10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="p-4 bg-green-500/20 border border-green-500/50 rounded-lg text-green-400"
-        >
-          {success}
-        </motion.div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Teams List */}
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* Sheets List */}
         <div className="bg-black rounded-lg border border-cyan-500/30 overflow-hidden">
           <div className="p-6 border-b border-gray-800">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-bold text-white">Your Teams</h3>
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="p-2 bg-cyan-500/20 hover:bg-cyan-500/30 rounded-lg text-cyan-400 transition-colors"
-              >
-                <Plus className="w-5 h-5" />
-              </button>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-xl font-bold text-white">Sheets</h3>
+              {isAdmin && (
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="p-2 bg-cyan-500/20 hover:bg-cyan-500/30 rounded-lg text-cyan-400 transition-colors"
+                >
+                  <Plus className="w-5 h-5" />
+                </button>
+              )}
             </div>
+            {isAdmin && (
+              <button
+                onClick={handleGenerateJoinCode}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 rounded-lg text-white text-sm font-medium transition-all"
+              >
+                <Share2 className="w-4 h-4" />
+                Share Team
+              </button>
+            )}
           </div>
 
           <div className="divide-y divide-gray-800 max-h-[500px] overflow-y-auto">
             {loading ? (
               <div className="p-4 text-center text-gray-400">Loading...</div>
-            ) : teams.length === 0 ? (
+            ) : sheets.length === 0 ? (
               <div className="p-8 text-center text-gray-400">
-                <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>No teams yet. Create one!</p>
+                <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                <p>No sheets yet</p>
               </div>
             ) : (
-              teams.map((team) => (
+              sheets.map((sheet) => (
                 <button
-                  key={team.id}
-                  onClick={async () => {
-                    const details = await getTeamDetails(team.id);
-                    setSelectedTeam(details);
-                  }}
+                  key={sheet.id}
+                  onClick={() => setSelectedSheet(sheet)}
                   className={`w-full p-4 text-left transition-colors ${
-                    selectedTeam?.id === team.id
+                    selectedSheet?.id === sheet.id
                       ? 'bg-cyan-500/10 border-l-2 border-cyan-500'
                       : 'hover:bg-gray-900/50'
                   }`}
                 >
-                  <p className="font-semibold text-white">{team.team_name}</p>
-                  <p className="text-sm text-gray-400 mt-1">{team.description}</p>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-2xl">
+                      {PLATFORM_INFO[sheet.platform as keyof typeof PLATFORM_INFO]?.icon || '📝'}
+                    </span>
+                    <p className="font-semibold text-white">{sheet.sheet_name}</p>
+                  </div>
+                  <p className="text-sm text-gray-400 mb-2">{sheet.description}</p>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="px-2 py-1 bg-purple-500/20 border border-purple-500/30 rounded text-purple-400">
+                      {sheet.problems.length} problems
+                    </span>
+                    <span className="text-gray-500 capitalize">{sheet.platform}</span>
+                  </div>
                 </button>
               ))
             )}
           </div>
         </div>
 
-        {/* Team Details */}
-        {selectedTeam ? (
-          <div className="lg:col-span-2 space-y-6">
-            {/* Team Info */}
+        {/* Sheet Content */}
+        {selectedSheet ? (
+          <div className="lg:col-span-3 space-y-6">
+            {/* Header with Progress */}
             <div className="bg-black rounded-lg border border-cyan-500/30 p-6">
-              <div className="flex items-start justify-between mb-6">
+              <div className="flex items-start justify-between mb-4">
                 <div>
-                  <h2 className="text-2xl font-bold text-white">
-                    {selectedTeam.team_name}
-                  </h2>
-                  <p className="text-gray-400 mt-2">
-                    {selectedTeam.description}
-                  </p>
+                  <div className="flex items-center gap-3 mb-2">
+                    <span className="text-3xl">
+                      {PLATFORM_INFO[selectedSheet.platform as keyof typeof PLATFORM_INFO]?.icon}
+                    </span>
+                    <h2 className="text-2xl font-bold text-white">
+                      {selectedSheet.sheet_name}
+                    </h2>
+                  </div>
+                  <p className="text-gray-400">{selectedSheet.description}</p>
                 </div>
-                {!isTeamCreator && (
-                  <button
-                    onClick={handleLeaveTeam}
-                    className="p-3 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-400 transition-colors"
-                    title="Leave team"
-                  >
-                    <LogOut className="w-5 h-5" />
-                  </button>
-                )}
+                <span className={`px-3 py-1 rounded-lg text-sm font-medium bg-gradient-to-r ${
+                  PLATFORM_INFO[selectedSheet.platform as keyof typeof PLATFORM_INFO]?.color
+                } text-white`}>
+                  {PLATFORM_INFO[selectedSheet.platform as keyof typeof PLATFORM_INFO]?.name}
+                </span>
               </div>
 
-              {isTeamCreator && (
-                <button
-                  onClick={() => setShowInviteModal(true)}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 rounded-lg text-white font-medium transition-all"
-                >
-                  <Plus className="w-4 h-4" />
-                  Invite Member
-                </button>
-              )}
+              {/* Progress Bar */}
+              <div className="mt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-gray-400">Your Progress</span>
+                  <span className="text-sm font-medium text-cyan-400">
+                    {userSolvedCount} / {totalProblems} ({Math.round(progressPercentage)}%)
+                  </span>
+                </div>
+                <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${progressPercentage}%` }}
+                    className="h-full bg-gradient-to-r from-cyan-500 to-blue-500"
+                  />
+                </div>
+              </div>
             </div>
 
-            {/* Team Members */}
+            {/* Filters */}
+            <div className="bg-black rounded-lg border border-cyan-500/30 p-4">
+              <div className="flex items-center gap-2">
+                <Filter className="w-5 h-5 text-gray-400" />
+                <span className="text-sm text-gray-400 mr-3">Difficulty:</span>
+                {['All', 'Easy', 'Medium', 'Hard'].map((diff) => (
+                  <button
+                    key={diff}
+                    onClick={() => setFilterDifficulty(diff)}
+                    className={`px-3 py-1 rounded-lg text-sm font-medium transition-all ${
+                      filterDifficulty === diff
+                        ? 'bg-cyan-500 text-white'
+                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                    }`}
+                  >
+                    {diff}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Problems List */}
             <div className="bg-black rounded-lg border border-cyan-500/30 overflow-hidden">
               <div className="p-6 border-b border-gray-800">
                 <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                  <Users className="w-5 h-5" />
-                  Members ({selectedTeam.team_members?.length || 0})
+                  <Code2 className="w-5 h-5" />
+                  Problems ({filteredProblems.length})
                 </h3>
               </div>
 
-              <div className="divide-y divide-gray-800">
-                {(selectedTeam.team_members || []).map((member: TeamMember) => (
-                  <div
-                    key={member.user_id}
-                    className="p-4 flex items-center justify-between hover:bg-gray-900/50 transition-colors"
-                  >
-                    <div className="flex-1">
-                      <p className="font-semibold text-white">
-                        {member.user_stats?.name}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs px-2 py-1 bg-purple-500/20 border border-purple-500/30 rounded text-purple-400">
-                          {member.role}
+              <div className="divide-y divide-gray-800 max-h-[600px] overflow-y-auto">
+                {filteredProblems.map((problem: any, index: number) => {
+                  const progress = userProgress.get(problem.id);
+                  const isSolved = progress?.solved || false;
+                  const platformInfo = PLATFORM_INFO[problem.platform as keyof typeof PLATFORM_INFO];
+
+                  return (
+                    <motion.div
+                      key={problem.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.03 }}
+                      className={`p-4 flex items-center gap-4 hover:bg-gray-900/50 transition-colors ${
+                        isSolved ? 'bg-cyan-500/5' : ''
+                      }`}
+                    >
+                      {/* Checkbox */}
+                      <button
+                        onClick={() => handleToggleProblem(problem)}
+                        className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${
+                          isSolved
+                            ? 'bg-gradient-to-br from-cyan-500 to-blue-600 border-cyan-500'
+                            : 'border-gray-600 hover:border-cyan-500 hover:scale-110'
+                        }`}
+                      >
+                        {isSolved && <Check className="w-4 h-4 text-white" />}
+                      </button>
+
+                      {/* Problem Info */}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3">
+                          <span className="text-gray-500 font-mono text-sm">
+                            #{problem.platformNum}
+                          </span>
+                          <span className={`font-medium ${
+                            isSolved ? 'text-gray-500 line-through' : 'text-white'
+                          }`}>
+                            {problem.title}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Difficulty & Points */}
+                      <div className="flex items-center gap-3">
+                        <span className={`px-3 py-1 rounded-full text-xs font-medium border ${
+                          getDifficultyColor(problem.difficulty)
+                        }`}>
+                          {problem.difficulty}
                         </span>
-                        <span className="text-sm text-gray-400">
-                          {member.user_stats?.points} pts
+                        <span className="text-cyan-400 font-medium text-sm">
+                          {problem.points} pts
                         </span>
                       </div>
-                    </div>
 
-                    {isTeamCreator && member.role !== 'creator' && (
-                      <button
-                        onClick={() => handleRemoveMember(member.user_id)}
-                        className="p-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 transition-colors"
-                        title="Remove member"
+                      {/* External Link */}
+                      <a
+                        href={platformInfo.getUrl(problem)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`p-2 bg-gradient-to-br ${platformInfo.color} hover:opacity-80 rounded-lg transition-all`}
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
+                        <ExternalLink className="w-5 h-5 text-white" />
+                      </a>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Leaderboard */}
+            <div className="bg-black rounded-lg border border-cyan-500/30 overflow-hidden">
+              <div className="p-6 border-b border-gray-800">
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-yellow-400" />
+                  Leaderboard
+                </h3>
+              </div>
+
+              <div className="divide-y divide-gray-800 max-h-[400px] overflow-y-auto">
+                {leaderboard.length === 0 ? (
+                  <div className="p-8 text-center text-gray-400">
+                    <Trophy className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <p>No one has solved any problems yet</p>
                   </div>
-                ))}
+                ) : (
+                  leaderboard.map((member, index) => {
+                    const { IconComponent, color } = getAvatarComponent(member.avatar);
+                    const isCurrentUser = member.user_id === user?.id;
+
+                    return (
+                      <motion.div
+                        key={member.user_id}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.05 }}
+                        className={`p-4 flex items-center gap-4 ${
+                          isCurrentUser ? 'bg-cyan-500/10' : 'hover:bg-gray-900/50'
+                        } transition-colors`}
+                      >
+                        {/* Rank */}
+                        <div className="w-8 flex justify-center">
+                          {index === 0 ? (
+                            <span className="text-2xl">🥇</span>
+                          ) : index === 1 ? (
+                            <span className="text-2xl">🥈</span>
+                          ) : index === 2 ? (
+                            <span className="text-2xl">🥉</span>
+                          ) : (
+                            <span className="text-gray-500 font-semibold">#{index + 1}</span>
+                          )}
+                        </div>
+
+                        {/* Avatar */}
+                        <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${color} flex items-center justify-center`}>
+                          <IconComponent className="w-6 h-6 text-white" />
+                        </div>
+
+                        {/* Name */}
+                        <div className="flex-1">
+                          <p className="font-semibold text-white flex items-center gap-2">
+                            {member.name}
+                            {isCurrentUser && (
+                              <span className="text-xs px-2 py-0.5 bg-cyan-500/20 border border-cyan-500/30 rounded text-cyan-400">
+                                You
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-sm text-gray-400">
+                            {member.solved_count} problems solved
+                          </p>
+                        </div>
+
+                        {/* Points */}
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-cyan-400">
+                            {member.total_points}
+                          </p>
+                          <p className="text-xs text-gray-500">points</p>
+                        </div>
+                      </motion.div>
+                    );
+                  })
+                )}
               </div>
             </div>
           </div>
         ) : (
-          <div className="lg:col-span-2 bg-black rounded-lg border border-cyan-500/30 p-12 text-center">
-            <Users className="w-16 h-16 mx-auto mb-4 text-gray-600" />
-            <p className="text-gray-400 text-lg">Select a team to view details</p>
+          <div className="lg:col-span-3 bg-black rounded-lg border border-cyan-500/30 p-12 text-center">
+            <FileText className="w-16 h-16 mx-auto mb-4 text-gray-600" />
+            <p className="text-gray-400 text-lg">Select a sheet to view problems</p>
           </div>
         )}
       </div>
 
-      {/* Create Team Modal */}
-      {showCreateModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <motion.div
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-black border border-cyan-500/30 rounded-lg p-6 max-w-md w-full mx-4"
-          >
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-white">Create Team</h2>
-              <button
-                onClick={() => setShowCreateModal(false)}
-                className="text-gray-400 hover:text-white"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateTeam} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Team Name
-                </label>
-                <input
-                  type="text"
-                  value={teamName}
-                  onChange={(e) => setTeamName(e.target.value)}
-                  placeholder="Enter team name"
-                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Description
-                </label>
-                <textarea
-                  value={teamDescription}
-                  onChange={(e) => setTeamDescription(e.target.value)}
-                  placeholder="Enter team description (optional)"
-                  className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none"
-                  rows={3}
-                />
-              </div>
-
-              <div className="flex gap-3 pt-4">
+      {/* Create Sheet Modal */}
+      <AnimatePresence>
+        {showCreateModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-black border border-cyan-500/30 rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-white">Create Problem Sheet</h2>
                 <button
-                  type="button"
                   onClick={() => setShowCreateModal(false)}
-                  className="flex-1 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-white transition-colors"
+                  className="text-gray-400 hover:text-white transition-colors"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex-1 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 disabled:bg-cyan-500/50 rounded-lg text-white font-medium transition-colors"
-                >
-                  {loading ? 'Creating...' : 'Create'}
+                  <X className="w-6 h-6" />
                 </button>
               </div>
-            </form>
-          </motion.div>
-        </div>
-      )}
 
-      {/* Invite User Modal */}
-      {showInviteModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
-          <motion.div
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-black border border-cyan-500/30 rounded-lg p-6 max-w-md w-full mx-4"
-          >
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-white">Invite Member</h2>
-              <button
-                onClick={() => setShowInviteModal(false)}
-                className="text-gray-400 hover:text-white"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
+              <form onSubmit={handleCreateSheet} className="space-y-6">
+                {/* Basic Info */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Sheet Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={sheetName}
+                      onChange={(e) => setSheetName(e.target.value)}
+                      placeholder="e.g., Arrays & Strings"
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                      required
+                    />
+                  </div>
 
-            <form onSubmit={handleInviteUser} className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Email Address
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-                  <input
-                    type="email"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    placeholder="user@example.com"
-                    className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-10 pr-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                    required
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Platform *
+                    </label>
+                    <select
+                      value={selectedPlatform}
+                      onChange={(e) => {
+                        setSelectedPlatform(e.target.value);
+                        setSelectedProblems(new Set());
+                      }}
+                      className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    >
+                      <option value="leetcode">LeetCode</option>
+                      <option value="codeforces">Codeforces</option>
+                      <option value="codechef">CodeChef</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Description
+                  </label>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Describe the problem set..."
+                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500 resize-none"
+                    rows={2}
                   />
                 </div>
+
+                {/* Problem Selection */}
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <label className="text-sm font-medium text-gray-300">
+                      Select Problems * ({selectedProblems.size} selected)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const allProblems = getProblemsByPlatform(selectedPlatform);
+                        if (selectedProblems.size === allProblems.length) {
+                          setSelectedProblems(new Set());
+                        } else {
+                          setSelectedProblems(new Set(allProblems.map(p => p.id)));
+                        }
+                      }}
+                      className="text-xs text-cyan-400 hover:text-cyan-300"
+                    >
+                      {selectedProblems.size === getProblemsByPlatform(selectedPlatform).length 
+                        ? 'Deselect All' 
+                        : 'Select All'}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[400px] overflow-y-auto p-4 bg-gray-900/50 border border-gray-800 rounded-lg">
+                    {getProblemsByPlatform(selectedPlatform).map((problem: any) => (
+                      <label
+                        key={problem.id}
+                        className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                          selectedProblems.has(problem.id)
+                            ? 'bg-cyan-500/20 border border-cyan-500/50'
+                            : 'bg-gray-800 hover:bg-gray-700 border border-gray-700'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedProblems.has(problem.id)}
+                          onChange={(e) => {
+                            const newSelected = new Set(selectedProblems);
+                            if (e.target.checked) {
+                              newSelected.add(problem.id);
+                            } else {
+                              newSelected.delete(problem.id);
+                            }
+                            setSelectedProblems(newSelected);
+                          }}
+                          className="w-4 h-4 text-cyan-500 bg-gray-700 border-gray-600 rounded focus:ring-cyan-500"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-white truncate">
+                            #{problem.platformNum} {problem.title}
+                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className={`text-xs px-2 py-0.5 rounded ${
+                              problem.difficulty === 'Easy' ? 'bg-green-500/20 text-green-400' :
+                              problem.difficulty === 'Medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                              'bg-red-500/20 text-red-400'
+                            }`}>
+                              {problem.difficulty}
+                            </span>
+                            <span className="text-xs text-cyan-400">{problem.points} pts</span>
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateModal(false)}
+                    className="flex-1 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-white transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading || selectedProblems.size === 0}
+                    className="flex-1 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 disabled:bg-cyan-500/50 rounded-lg text-white font-medium transition-colors"
+                  >
+                    {loading ? 'Creating...' : `Create Sheet (${selectedProblems.size} problems)`}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Share Modal */}
+      <AnimatePresence>
+        {showShareModal && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-black border border-cyan-500/30 rounded-lg p-6 max-w-md w-full"
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-white">Share Team</h2>
+                <button
+                  onClick={() => setShowShareModal(false)}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
               </div>
 
-              <div className="flex gap-3 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setShowInviteModal(false)}
-                  className="flex-1 px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-white transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex-1 px-4 py-2 bg-cyan-500 hover:bg-cyan-600 disabled:bg-cyan-500/50 rounded-lg text-white font-medium transition-colors"
-                >
-                  {loading ? 'Sending...' : 'Send'}
-                </button>
+              <div className="space-y-4">
+                <p className="text-gray-400">
+                  Share this code with others to let them join your team instantly!
+                </p>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-3">
+                    <p className="text-2xl font-bold text-cyan-400 text-center tracking-wider">
+                      {joinCode}
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleCopyJoinCode}
+                    className="p-3 bg-cyan-500 hover:bg-cyan-600 rounded-lg text-white transition-colors"
+                  >
+                    {copied ? <Check className="w-6 h-6" /> : <Copy className="w-6 h-6" />}
+                  </button>
+                </div>
+
+                {copied && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-green-400 text-sm text-center"
+                  >
+                    ✓ Copied to clipboard!
+                  </motion.p>
+                )}
+
+                <div className="pt-4 border-t border-gray-800">
+                  <p className="text-sm text-gray-500">
+                    💡 Team members can use this code to join without needing an invitation
+                  </p>
+                </div>
               </div>
-            </form>
-          </motion.div>
-        </div>
-      )}
-    </motion.div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }

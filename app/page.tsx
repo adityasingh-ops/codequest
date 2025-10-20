@@ -16,6 +16,7 @@ import ProfileTab from '@/components/profile/ProfileTab';
 import RevisionTab from '@/components/revision/RevisionTab';
 import UserTab from '@/components/Users/UserTab';
 import RaceTrackDashboard from '@/components/dashboard/RaceTrack';
+import TeamManagement from '@/components/teams/createTeam';
 
 export default function Dashboard() {
   const { user, loading: authLoading, signOut } = useAuth();
@@ -152,6 +153,10 @@ export default function Dashboard() {
             leaderboard={leaderboard}
             currentUserId={user.id}
           />
+        );
+              case 'teams':
+        return (
+          <TeamManagement />
         );
       
       case 'profile':
