@@ -14,7 +14,6 @@ export default function Navigation({ activeTab, onTabChange }: NavigationProps) 
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'problems', label: 'Problems', icon: Code2 },
     { id: 'leaderboard', label: 'Leaderboard', icon: Trophy },
-    { id: 'teams', label: 'Teams', icon: UsersRound },
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'revision', label: 'Revision', icon: Brain },
     { id: 'users', label: 'Users', icon: Users }
