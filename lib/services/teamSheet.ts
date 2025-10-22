@@ -188,30 +188,39 @@ export const toggleProblemSolved = async (
 // ============================================
 // LEADERBOARD
 // ============================================
-
 export const getSheetLeaderboard = async (sheetId: string) => {
-  const { data, error } = await supabase
+  // Step 1: Get solved progress
+  const { data: progress, error: progressError } = await supabase
     .from('team_sheet_progress')
-    .select(`
-      user_id,
-      user_stats!team_sheet_progress_user_id_fkey(name, avatar)
-    `)
+    .select('user_id, points_earned')
     .eq('sheet_id', sheetId)
     .eq('solved', true);
 
-  if (error) throw error;
+  if (progressError) throw progressError;
 
-  // Aggregate by user
-  const leaderboard = (data || []).reduce((acc: any[], curr: any) => {
+  if (!progress || progress.length === 0) return [];
+
+  // Step 2: Get user info from user_stats
+  const userIds = progress.map(p => p.user_id);
+  const { data: users, error: userError } = await supabase
+    .from('user_stats')
+    .select('user_id, name, avatar')
+    .in('user_id', userIds);
+
+  if (userError) throw userError;
+
+  // Step 3: Aggregate leaderboard
+  const leaderboard = progress.reduce((acc: any[], curr: any) => {
     const existing = acc.find(item => item.user_id === curr.user_id);
+    const user = users?.find(u => u.user_id === curr.user_id);
     if (existing) {
       existing.solved_count += 1;
       existing.total_points += curr.points_earned || 0;
     } else {
       acc.push({
         user_id: curr.user_id,
-        name: curr.user_stats?.name || 'Unknown',
-        avatar: curr.user_stats?.avatar || 'user',
+        name: user?.name || 'Unknown',
+        avatar: user?.avatar || 'user',
         solved_count: 1,
         total_points: curr.points_earned || 0
       });
@@ -219,7 +228,10 @@ export const getSheetLeaderboard = async (sheetId: string) => {
     return acc;
   }, []);
 
-  return leaderboard.sort((a, b) => b.solved_count - a.solved_count || b.total_points - a.total_points);
+  // Step 4: Sort leaderboard
+  return leaderboard.sort(
+    (a, b) => b.solved_count - a.solved_count || b.total_points - a.total_points
+  );
 };
 
 // ============================================
