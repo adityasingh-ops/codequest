@@ -3,37 +3,8 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { useAuth } from './AuthProvider';
-
-interface UserStats {
-  user_id: string;
-  name: string;
-  points: number;
-  streak: number;
-  solved_count: number;
-  solved_problems: number[];
-  revision_problems: number[];
-  avatar: string;
-  leetcode_username?: string;
-  last_solved?: string;
-}
-
-interface UserDataContextType {
-  userStats: UserStats | null;
-  solvedProblems: Set<number>;
-  revisionProblems: Set<number>;
-  leaderboard: any[];
-  user:any[];
-  OtherUsers: any[];
-  weeklyStreak: any[];
-  loading: boolean;
-  error: string | null;
-  refreshData: () => Promise<void>;
-  updateProblemStatus: (problemId: number, points: number) => Promise<void>;
-  toggleRevisionStatus: (problemId: number) => Promise<void>;
-  updateAvatar: (avatarId: string) => Promise<void>;
-  updateName: (newName: string) => Promise<boolean>;
-}
-
+import { UserStats } from '@/lib/interfaces/User/UserStats';
+import { UserDataContextType } from '@/lib/interfaces/User/UserDataContext';
 const UserDataContext = createContext<UserDataContextType | undefined>(undefined);
 
 export function UserDataProvider({ children }: { children: React.ReactNode }) {
