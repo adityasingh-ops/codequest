@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase/client';
 import { useAuth } from './AuthProvider';
 import { UserStats } from '@/lib/interfaces/User/UserStats';
 import { UserDataContextType } from '@/lib/interfaces/User/UserDataContext';
+import toast from 'react-hot-toast';
 const UserDataContext = createContext<UserDataContextType | undefined>(undefined);
 
 export function UserDataProvider({ children }: { children: React.ReactNode }) {
@@ -67,6 +68,7 @@ export function UserDataProvider({ children }: { children: React.ReactNode }) {
 
       if (stats) {
         console.log('User stats found:', stats);
+        toast.success('User stats loaded successfully');
         setUserStats(stats);
         setSolvedProblems(new Set(stats.solved_problems || []));
         setRevisionProblems(new Set(stats.revision_problems || []));

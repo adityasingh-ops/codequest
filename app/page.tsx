@@ -154,10 +154,6 @@ export default function Dashboard() {
             currentUserId={user.id}
           />
         );
-              case 'teams':
-        return (
-          <TeamManagement />
-        );
       
       case 'profile':
         return (
