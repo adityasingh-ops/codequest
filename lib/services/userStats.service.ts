@@ -9,47 +9,7 @@ export function useUserStatsService(userId?: string) {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    /**
-     * Initialize or load user stats
-     */
-    const initializeUserStats = useCallback(async (displayName?: string) => {
-        if (!userId) {
-            setError('User ID is required');
-            return null;
-        }
 
-        try {
-            setLoading(true);
-            setError(null);
-
-            // Try to fetch existing stats
-            const existingStats = await fetchUserStats();
-            
-            if (existingStats) {
-                return existingStats;
-            }
-
-            // Create new stats if they don't exist
-            if (displayName) {
-                return await createUserStats(displayName);
-            }
-
-            // If no display name provided, get from auth user
-            const { data: { user: authUser } } = await supabase.auth.getUser();
-            const name = authUser?.user_metadata?.full_name || 
-                        authUser?.email?.split('@')[0] || 
-                        'User';
-
-            return await createUserStats(name);
-        } catch (err: any) {
-            const errorMessage = err.message || 'Failed to initialize user stats';
-            console.error('Error initializing user stats:', err);
-            setError(errorMessage);
-            return null;
-        } finally {
-            setLoading(false);
-        }
-    }, [userId]);
 
     /**
      * Fetch user stats from database
