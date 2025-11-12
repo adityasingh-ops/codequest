@@ -11,11 +11,11 @@ interface NavigationProps {
 
 export default function Navigation({ activeTab, onTabChange }: NavigationProps) {
   const tabs = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'problems', label: 'Problems', icon: Code2 },
     { id: 'leaderboard', label: 'Leaderboard', icon: Trophy },
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'revision', label: 'Revision', icon: Brain },
+    { id: 'dashboard', label: 'Stats', icon: LayoutDashboard },
     { id: 'users', label: 'Users', icon: Users }
   ];
 
