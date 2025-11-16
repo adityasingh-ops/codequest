@@ -143,3 +143,4 @@ Do not commit secrets. Use environment variables for all keys and rotate credent
 ## License
 
 This project’s license has not been specified. If you plan to open source it, consider adding a license (e.g., MIT) at the repository root.
+  
