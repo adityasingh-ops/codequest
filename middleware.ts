@@ -4,26 +4,29 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+
+  // 1️⃣ Allow Google OAuth callback BEFORE hitting Supabase
+  if (pathname === '/auth/callback') {
+    return NextResponse.next();
+  }
+
+  // 2️⃣ Now safe to create Supabase client
   const res = NextResponse.next();
   const supabase = createMiddlewareClient({ req, res });
-  
+
   const {
     data: { session },
   } = await supabase.auth.getSession();
 
-  // Allow access to auth callback
-  if (req.nextUrl.pathname === '/auth/callback') {
-    return res;
-  }
-
-  // Redirect to home if not authenticated and trying to access dashboard
-  if (!session && req.nextUrl.pathname.startsWith('/dashboard')) {
+  // 3️⃣ Protect dashboard
+  if (!session && pathname.startsWith('/dashboard')) {
     const redirectUrl = new URL('/', req.url);
     return NextResponse.redirect(redirectUrl);
   }
 
-  // Redirect to dashboard if authenticated and on home page
-  if (session && req.nextUrl.pathname === '/') {
+  // 4️⃣ Redirect logged-in users away from home
+  if (session && pathname === '/') {
     const redirectUrl = new URL('/dashboard', req.url);
     return NextResponse.redirect(redirectUrl);
   }
