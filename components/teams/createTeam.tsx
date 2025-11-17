@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Plus, FileText, Users, Trophy, Copy, Check, X, 
@@ -48,6 +48,22 @@ export default function TeamSheetManagement({ teamId, isAdmin }: TeamSheetManage
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [filterDifficulty, setFilterDifficulty] = useState('All');
+  const [problemSearch, setProblemSearch] = useState('');
+
+  const platformProblems = useMemo(
+    () => getProblemsByPlatform(selectedPlatform),
+    [selectedPlatform]
+  );
+
+  const filteredSelectionProblems = useMemo(() => {
+    const query = problemSearch.trim().toLowerCase();
+    if (!query) return platformProblems;
+    return platformProblems.filter((problem: any) => {
+      const titleMatch = problem.title.toLowerCase().includes(query);
+      const numberMatch = String(problem.platformNum).includes(query);
+      return titleMatch || numberMatch;
+    });
+  }, [platformProblems, problemSearch]);
 
   // Load sheets
   useEffect(() => {
@@ -123,8 +139,7 @@ export default function TeamSheetManagement({ teamId, isAdmin }: TeamSheetManage
     setLoading(true);
     setError('');
     try {
-      const allProblems = getProblemsByPlatform(selectedPlatform);
-      const problems = allProblems.filter(p => selectedProblems.has(p.id));
+      const problems = platformProblems.filter(p => selectedProblems.has(p.id));
 
       const newSheet = await createTeamSheet(
         teamId,
@@ -560,6 +575,7 @@ export default function TeamSheetManagement({ teamId, isAdmin }: TeamSheetManage
                       onChange={(e) => {
                         setSelectedPlatform(e.target.value);
                         setSelectedProblems(new Set());
+                        setProblemSearch('');
                       }}
                       className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
                     >
@@ -592,7 +608,7 @@ export default function TeamSheetManagement({ teamId, isAdmin }: TeamSheetManage
                     <button
                       type="button"
                       onClick={() => {
-                        const allProblems = getProblemsByPlatform(selectedPlatform);
+                        const allProblems = platformProblems;
                         if (selectedProblems.size === allProblems.length) {
                           setSelectedProblems(new Set());
                         } else {
@@ -601,53 +617,73 @@ export default function TeamSheetManagement({ teamId, isAdmin }: TeamSheetManage
                       }}
                       className="text-xs text-cyan-400 hover:text-cyan-300"
                     >
-                      {selectedProblems.size === getProblemsByPlatform(selectedPlatform).length 
+                      {selectedProblems.size === platformProblems.length 
                         ? 'Deselect All' 
                         : 'Select All'}
                     </button>
                   </div>
 
+                  <div className="flex items-center gap-3 mb-3">
+                    <input
+                      type="text"
+                      value={problemSearch}
+                      onChange={(e) => setProblemSearch(e.target.value)}
+                      placeholder="Search by LeetCode # or title..."
+                      className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    />
+                    <span className="text-xs text-gray-400 whitespace-nowrap">
+                      {problemSearch ? 'Filtered' : 'Showing'}{' '}
+                      {filteredSelectionProblems.length} problems
+                    </span>
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[400px] overflow-y-auto p-4 bg-gray-900/50 border border-gray-800 rounded-lg">
-                    {getProblemsByPlatform(selectedPlatform).map((problem: any) => (
-                      <label
-                        key={problem.id}
-                        className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
-                          selectedProblems.has(problem.id)
-                            ? 'bg-cyan-500/20 border border-cyan-500/50'
-                            : 'bg-gray-800 hover:bg-gray-700 border border-gray-700'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedProblems.has(problem.id)}
-                          onChange={(e) => {
-                            const newSelected = new Set(selectedProblems);
-                            if (e.target.checked) {
-                              newSelected.add(problem.id);
-                            } else {
-                              newSelected.delete(problem.id);
-                            }
-                            setSelectedProblems(newSelected);
-                          }}
-                          className="w-4 h-4 text-cyan-500 bg-gray-700 border-gray-600 rounded focus:ring-cyan-500"
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-white truncate">
-                            #{problem.platformNum} {problem.title}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className={`text-xs px-2 py-0.5 rounded ${
-                              problem.difficulty === 'Easy' ? 'bg-green-500/20 text-green-400' :
-                              problem.difficulty === 'Medium' ? 'bg-yellow-500/20 text-yellow-400' :
-                              'bg-red-500/20 text-red-400'
-                            }`}>
-                              {problem.difficulty}
-                            </span>
-                            <span className="text-xs text-cyan-400">{problem.points} pts</span>
+                    {filteredSelectionProblems.length === 0 ? (
+                      <p className="text-sm text-gray-500 col-span-2 text-center py-6">
+                        No problems match your search.
+                      </p>
+                    ) : (
+                      filteredSelectionProblems.map((problem: any) => (
+                        <label
+                          key={problem.id}
+                          className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                            selectedProblems.has(problem.id)
+                              ? 'bg-cyan-500/20 border border-cyan-500/50'
+                              : 'bg-gray-800 hover:bg-gray-700 border border-gray-700'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedProblems.has(problem.id)}
+                            onChange={(e) => {
+                              const newSelected = new Set(selectedProblems);
+                              if (e.target.checked) {
+                                newSelected.add(problem.id);
+                              } else {
+                                newSelected.delete(problem.id);
+                              }
+                              setSelectedProblems(newSelected);
+                            }}
+                            className="w-4 h-4 text-cyan-500 bg-gray-700 border-gray-600 rounded focus:ring-cyan-500"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-white truncate">
+                              #{problem.platformNum} {problem.title}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className={`text-xs px-2 py-0.5 rounded ${
+                                problem.difficulty === 'Easy' ? 'bg-green-500/20 text-green-400' :
+                                problem.difficulty === 'Medium' ? 'bg-yellow-500/20 text-yellow-400' :
+                                'bg-red-500/20 text-red-400'
+                              }`}>
+                                {problem.difficulty}
+                              </span>
+                              <span className="text-xs text-cyan-400">{problem.points} pts</span>
+                            </div>
                           </div>
-                        </div>
-                      </label>
-                    ))}
+                        </label>
+                      ))
+                    )}
                   </div>
                 </div>
 

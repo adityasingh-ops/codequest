@@ -1,10 +1,14 @@
-// components/problems/CustomTrackModal.tsx
 "use client";
-import React, { useState } from 'react';
+
+import React, { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, Github, Loader, Upload, Plus, Trash2 } from 'lucide-react';
-import { parseGithubTrack } from '@/lib/utils/githubParser';
+import { X, Filter, Search, Palette, Check, Loader2 } from 'lucide-react';
 import { saveCustomTrack } from '@/lib/services/customTrack';
+import { getProblemsByPlatform, PLATFORM_INFO } from '@/lib/utils/problemSet';
+import { getDifficultyColor } from '@/lib/utils/helper';
+
+type PlatformFilter = 'leetcode' | 'codeforces' | 'codechef';
+type DifficultyFilter = 'All' | 'Easy' | 'Medium' | 'Hard';
 
 interface CustomTrackModalProps {
   userId: string;
@@ -12,33 +16,192 @@ interface CustomTrackModalProps {
   onSuccess: () => void;
 }
 
-interface WeekInput {
-  weekKey: string;
-  title: string;
-  problems: number[];
-   problemsText?: string;
-}
+type PlatformProblem = any;
 
+const COLOR_OPTIONS = [
+  { value: 'from-purple-500 to-pink-600', label: 'Purple / Pink' },
+  { value: 'from-green-500 to-emerald-600', label: 'Green / Emerald' },
+  { value: 'from-blue-500 to-indigo-600', label: 'Blue / Indigo' },
+  { value: 'from-orange-500 to-red-600', label: 'Orange / Red' },
+  { value: 'from-cyan-500 to-blue-600', label: 'Cyan / Blue' }
+];
+
+const PLATFORM_FILTERS: { label: string; value: PlatformFilter }[] = [
+  { label: 'LeetCode', value: 'leetcode' },
+  { label: 'Codeforces', value: 'codeforces' },
+  { label: 'CodeChef', value: 'codechef' }
+];
+
+const getPointsForProblem = (problem: PlatformProblem) => {
+  if (typeof problem.points === 'number') return problem.points;
+  switch (problem.difficulty) {
+    case 'Easy':
+      return 10;
+    case 'Medium':
+      return 15;
+    case 'Hard':
+      return 20;
+    default:
+      return 10;
+  }
+};
+
+const formatProblemForTrack = (problem: PlatformProblem) => {
+  const platformInfo = PLATFORM_INFO[problem.platform as keyof typeof PLATFORM_INFO];
+
+  return {
+    id: problem.id,
+    title: problem.title,
+    difficulty: problem.difficulty,
+    points: getPointsForProblem(problem),
+    platform: problem.platform,
+    platformNum: problem.platformNum,
+    leetcodeNum: problem.platform === 'leetcode' ? problem.platformNum : undefined,
+    titleSlug: problem.titleSlug,
+    link: platformInfo?.getUrl ? platformInfo.getUrl(problem) : undefined
+  };
+};
 
 export default function CustomTrackModal({ userId, onClose, onSuccess }: CustomTrackModalProps) {
-  const [step, setStep] = useState<'method' | 'github' | 'json' | 'manual'>('method');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  
-  // GitHub method
-  const [githubUrl, setGithubUrl] = useState('');
-  
-  // Manual method
+  // Work like team sheets: only ever load one platform's full list at a time.
+  const [platformFilter, setPlatformFilter] = useState<PlatformFilter>('leetcode');
+
+  const platformProblems = useMemo<PlatformProblem[]>(() => {
+    return getProblemsByPlatform(platformFilter) as PlatformProblem[];
+  }, [platformFilter]);
+
   const [trackName, setTrackName] = useState('');
   const [trackTitle, setTrackTitle] = useState('');
   const [trackColor, setTrackColor] = useState('from-purple-500 to-pink-600');
-const [weeks, setWeeks] = useState<WeekInput[]>([
-  { weekKey: 'Week 1', title: '', problems: [], problemsText: '' }
-]);
+  const [description, setDescription] = useState('');
+  const [difficultyFilter, setDifficultyFilter] = useState<DifficultyFilter>('All');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedProblems, setSelectedProblems] = useState<Set<number>>(new Set());
+  const [selectedProblemDetails, setSelectedProblemDetails] = useState<
+    Map<number, PlatformProblem>
+  >(new Map());
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleGithubImport = async () => {
-    if (!githubUrl.trim()) {
-      setError('Please enter a GitHub URL');
+  const filteredProblems = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+
+    return platformProblems.filter((problem) => {
+      if (difficultyFilter !== 'All' && problem.difficulty !== difficultyFilter) {
+        return false;
+      }
+
+      if (!term) return true;
+
+      return (
+        problem.title.toLowerCase().includes(term) ||
+        String(problem.platformNum).includes(term)
+      );
+    });
+  }, [platformProblems, difficultyFilter, searchTerm]);
+
+  const selectedProblemObjects = useMemo(
+    () => Array.from(selectedProblemDetails.values()),
+    [selectedProblemDetails]
+  );
+
+  const platformBreakdown = useMemo(() => {
+    return selectedProblemObjects.reduce<Record<string, number>>((acc, problem) => {
+      acc[problem.platform] = (acc[problem.platform] || 0) + 1;
+      return acc;
+    }, {});
+  }, [selectedProblemObjects]);
+
+  const totalPoints = selectedProblemObjects.reduce(
+    (sum, problem) => sum + getPointsForProblem(problem),
+    0
+  );
+
+  const toggleProblem = (problemId: number) => {
+    setSelectedProblems((prev) => {
+      const next = new Set(prev);
+      const exists = next.has(problemId);
+      const problem = platformProblems.find((p) => p.id === problemId);
+
+      if (exists) {
+        next.delete(problemId);
+        setSelectedProblemDetails((prevMap) => {
+          const m = new Map(prevMap);
+          m.delete(problemId);
+          return m;
+        });
+      } else if (problem) {
+        next.add(problemId);
+        setSelectedProblemDetails((prevMap) => {
+          const m = new Map(prevMap);
+          m.set(problemId, problem);
+          return m;
+        });
+      }
+      return next;
+    });
+  };
+
+  const selectAllFiltered = () => {
+    setSelectedProblems((prev) => {
+      const next = new Set(prev);
+      const everySelected =
+        filteredProblems.length > 0 &&
+        filteredProblems.every((problem) => next.has(problem.id));
+
+      if (everySelected) {
+        filteredProblems.forEach((problem) => {
+          next.delete(problem.id);
+          setSelectedProblemDetails((prevMap) => {
+            const m = new Map(prevMap);
+            m.delete(problem.id);
+            return m;
+          });
+        });
+      } else {
+        filteredProblems.forEach((problem) => {
+          next.add(problem.id);
+          setSelectedProblemDetails((prevMap) => {
+            const m = new Map(prevMap);
+            m.set(problem.id, problem);
+            return m;
+          });
+        });
+      }
+
+      return next;
+    });
+  };
+
+  const buildWeeksPayload = () => {
+    const problemsPerWeek = 10;
+    const payload: Record<string, any> = {};
+
+    selectedProblemObjects.forEach((problem, index) => {
+      const weekIndex = Math.floor(index / problemsPerWeek);
+      const weekKey = `Week ${weekIndex + 1}`;
+
+      if (!payload[weekKey]) {
+        payload[weekKey] = {
+          title: `Week ${weekIndex + 1}`,
+          days: [
+            {
+              topic: description.trim() || 'Mixed Practice',
+              problems: []
+            }
+          ]
+        };
+      }
+
+      payload[weekKey].days[0].problems.push(formatProblemForTrack(problem));
+    });
+
+    return payload;
+  };
+
+  const handleCreateTrack = async () => {
+    if (!trackName.trim() || !trackTitle.trim() || selectedProblems.size === 0 || loading) {
+      setError('Please fill all required fields and select at least one problem.');
       return;
     }
 
@@ -46,175 +209,29 @@ const [weeks, setWeeks] = useState<WeekInput[]>([
     setError('');
 
     try {
-      const trackData = await parseGithubTrack(githubUrl);
-      
+      const weeks = buildWeeksPayload();
+
       await saveCustomTrack({
         userId,
-        trackName: trackData.trackName,
-        trackTitle: trackData.trackTitle,
-        trackColor: trackData.trackColor,
-        githubUrl,
-        weeks: trackData.weeks
+        trackName: trackName.trim().toLowerCase(),
+        trackTitle: trackTitle.trim(),
+        trackColor,
+        githubUrl: null,
+        weeks
       });
 
       onSuccess();
+      onClose();
     } catch (err: any) {
-      setError(err.message || 'Failed to import from GitHub');
+      setError(err.message || 'Failed to create track.');
     } finally {
       setLoading(false);
     }
   };
-  const handleJsonFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
 
-  setLoading(true);
-  setError('');
-
-  try {
-    const text = await file.text();
-    const data = JSON.parse(text);
-
-    // Validate JSON structure
-    if (!data.trackName || !data.trackTitle || !data.weeks) {
-      throw new Error('Invalid JSON format. Missing required fields.');
-    }
-
-    // Optional: Validate all problems exist
-    const allProblems: number[] = [];
-    Object.values(data.weeks).forEach((week: any) => {
-      week.days.forEach((day: any) => {
-        day.problems.forEach((problem: any) => {
-          if (problem.leetcodeNum) {
-            allProblems.push(problem.leetcodeNum);
-          }
-        });
-      });
-    });
-
-    if (allProblems.length > 0) {
-      const { LeetCodeService } = await import('@/lib/services/leetcodeService');
-      const { invalidProblems } = await LeetCodeService.validateAndFetchProblems(allProblems);
-      
-      if (invalidProblems.length > 0) {
-        const proceed = window.confirm(
-          `Warning: ${invalidProblems.length} problems don't exist on LeetCode (${invalidProblems.slice(0, 5).join(', ')}${invalidProblems.length > 5 ? '...' : ''}). Continue anyway?`
-        );
-        if (!proceed) {
-          setLoading(false);
-          return;
-        }
-      }
-    }
-
-    await saveCustomTrack({
-      userId,
-      trackName: data.trackName,
-      trackTitle: data.trackTitle,
-      trackColor: data.trackColor || 'from-purple-500 to-pink-600',
-      githubUrl: null,
-      weeks: data.weeks
-    });
-
-    onSuccess();
-  } catch (err: any) {
-    setError(err.message || 'Failed to import JSON file');
-  } finally {
-    setLoading(false);
-  }
-};
-const handleManualCreate = async () => {
-  if (!trackName.trim() || !trackTitle.trim()) {
-    setError('Track name and title are required');
-    return;
-  }
-
-  if (weeks.length === 0 || weeks.some(w => !w.title || w.problems.length === 0)) {
-    setError('Each week must have a title and at least one problem');
-    return;
-  }
-
-  setLoading(true);
-  setError('');
-
-  try {
-    // Import the LeetCodeService
-    const { LeetCodeService } = await import('@/lib/services/leetcodeService');
-    
-    // Validate all problems
-    const allProblems = weeks.flatMap(w => w.problems);
-    const { validProblems, invalidProblems } = await LeetCodeService.validateAndFetchProblems(allProblems);
-
-    if (invalidProblems.length > 0) {
-      setError(`The following problems do not exist on LeetCode: ${invalidProblems.join(', ')}`);
-      setLoading(false);
-      return;
-    }
-
-    // Transform manual input to track format
-    const weeksData: Record<string, any> = {};
-    let problemIndex = 0;
-    
-    weeks.forEach(week => {
-      const weekProblems = validProblems.slice(problemIndex, problemIndex + week.problems.length);
-      problemIndex += week.problems.length;
-      
-      // Map the problems to ensure they include LeetCode titles and links
-      const formattedProblems = weekProblems.map(problem => ({
-        titleSlug: problem.titleSlug,
-        title: problem.title, // This is the actual title from LeetCode
-        difficulty: problem.difficulty,
-        link: `https://leetcode.com/problems/${problem.titleSlug}/`, // Direct LeetCode link
-        // Include any other properties from the LeetCode response
-        ...(problem.topicTags && { topicTags: problem.topicTags }),
-        ...(problem.isPaidOnly !== undefined && { isPaidOnly: problem.isPaidOnly })
-      }));
-      
-      weeksData[week.weekKey] = {
-        title: week.title,
-        days: [
-          {
-            topic: week.title,
-            problems: formattedProblems
-          }
-        ]
-      };
-    });
-
-    await saveCustomTrack({
-      userId,
-      trackName,
-      trackTitle,
-      trackColor,
-      githubUrl: null,
-      weeks: weeksData
-    });
-
-    onSuccess();
-  } catch (err: any) {
-    setError(err.message || 'Failed to create custom track');
-  } finally {
-    setLoading(false);
-  }
-};
-const addWeek = () => {
-  setWeeks([...weeks, { 
-    weekKey: `Week ${weeks.length + 1}`, 
-    title: '', 
-    problems: [],
-    problemsText: ''
-  }]);
-};
-
-  const removeWeek = (index: number) => {
-    setWeeks(weeks.filter((_, i) => i !== index));
-  };
-
-  const updateWeek = (index: number, field: keyof WeekInput, value: any) => {
-    const updated = [...weeks];
-    updated[index] = { ...updated[index], [field]: value };
-    setWeeks(updated);
-  };
+  const filteredSelectedCount = filteredProblems.filter((problem) =>
+    selectedProblems.has(problem.id)
+  ).length;
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -222,314 +239,262 @@ const addWeek = () => {
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-gray-900 rounded-xl border border-gray-800 max-w-2xl w-full max-h-[90vh] overflow-hidden"
+        className="bg-gray-900 rounded-xl border border-gray-800 max-w-4xl w-full max-h-[90vh] overflow-hidden"
       >
-        {/* Header */}
         <div className="p-6 border-b border-gray-800 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-white">Create Custom Track</h2>
+          <div>
+            <h2 className="text-2xl font-bold text-white">Build a Custom Track</h2>
+            <p className="text-sm text-gray-400">
+              Mix LeetCode, Codeforces, and CodeChef problems into a single playlist.
+            </p>
+          </div>
           <button
             onClick={onClose}
             className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+            aria-label="Close custom track modal"
           >
             <X className="w-5 h-5 text-gray-400" />
           </button>
         </div>
 
-        {/* Content */}
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
+        <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)] space-y-6">
           {error && (
-            <div className="mb-4 p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400">
+            <div className="p-4 bg-red-500/10 border border-red-500/40 rounded-lg text-red-300 text-sm">
               {error}
             </div>
           )}
 
-          {/* Method Selection */}
-          {/* Method Selection */}
-{step === 'method' && (
-  <div className="space-y-4">
-    <p className="text-gray-400 mb-6">Choose how you'd like to create your custom track:</p>
-    
-    <button
-      onClick={() => setStep('github')}
-      className="w-full p-6 bg-gray-800/50 hover:bg-gray-800 border border-gray-700 rounded-xl transition-all flex items-center gap-4"
-    >
-      <Github className="w-8 h-8 text-cyan-400" />
-      <div className="text-left">
-        <h3 className="text-lg font-bold text-white">Import from GitHub</h3>
-        <p className="text-sm text-gray-400">Import a track from a GitHub README or JSON file</p>
-      </div>
-    </button>
-
-    <button
-      onClick={() => setStep('json')}
-      className="w-full p-6 bg-gray-800/50 hover:bg-gray-800 border border-gray-700 rounded-xl transition-all flex items-center gap-4"
-    >
-      <Upload className="w-8 h-8 text-blue-400" />
-      <div className="text-left">
-        <h3 className="text-lg font-bold text-white">Import JSON File</h3>
-        <p className="text-sm text-gray-400">Upload a JSON file exported from another user</p>
-      </div>
-    </button>
-
-    <button
-      onClick={() => setStep('manual')}
-      className="w-full p-6 bg-gray-800/50 hover:bg-gray-800 border border-gray-700 rounded-xl transition-all flex items-center gap-4"
-    >
-      <Upload className="w-8 h-8 text-purple-400" />
-      <div className="text-left">
-        <h3 className="text-lg font-bold text-white">Create Manually</h3>
-        <p className="text-sm text-gray-400">Enter problem numbers and organize into weeks</p>
-      </div>
-    </button>
-  </div>
-)}
-{/* JSON Import */}
-{step === 'json' && (
-  <div className="space-y-4">
-    <button
-      onClick={() => setStep('method')}
-      className="text-cyan-400 hover:text-cyan-300 text-sm"
-    >
-      ← Back to method selection
-    </button>
-
-    <div>
-      <label className="block text-sm font-medium text-gray-300 mb-2">
-        Upload JSON File
-      </label>
-      <input
-        type="file"
-        accept=".json"
-        onChange={handleJsonFileUpload}
-        className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-cyan-500 file:text-white hover:file:bg-cyan-600 file:cursor-pointer"
-      />
-      <p className="mt-2 text-xs text-gray-500">
-        Upload a JSON file exported from another user's custom track
-      </p>
-    </div>
-
-    <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
-      <h4 className="font-medium text-white mb-2">Expected JSON Format:</h4>
-      <pre className="text-xs text-gray-400 overflow-x-auto">
-{`{
-  "trackName": "my_custom_track",
-  "trackTitle": "🎯 My Custom Track",
-  "trackColor": "from-purple-500 to-pink-600",
-  "weeks": {
-    "Week 1": {
-      "title": "Arrays",
-      "days": [...]
-    }
-  }
-}`}
-      </pre>
-    </div>
-
-    {loading && (
-      <div className="flex items-center justify-center gap-2 text-cyan-400">
-        <Loader className="w-5 h-5 animate-spin" />
-        <span>Importing JSON...</span>
-      </div>
-    )}
-  </div>
-)}
-
-          {/* GitHub Import */}
-          {step === 'github' && (
-            <div className="space-y-4">
-              <button
-                onClick={() => setStep('method')}
-                className="text-cyan-400 hover:text-cyan-300 text-sm"
-              >
-                ← Back to method selection
-              </button>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  GitHub URL
-                </label>
-                <input
-                  type="text"
-                  value={githubUrl}
-                  onChange={(e) => setGithubUrl(e.target.value)}
-                  placeholder="https://github.com/username/repo/blob/main/README.md"
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
-                />
-                <p className="mt-2 text-xs text-gray-500">
-                  Supports README.md or JSON files with problem lists
-                </p>
-              </div>
-
-              <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
-                <h4 className="font-medium text-white mb-2">Expected Format:</h4>
-                <pre className="text-xs text-gray-400 overflow-x-auto">
-{`# Track Title
-
-## Week 1: Arrays
-- Problem 1
-- Problem 121
-- Problem 217
-
-## Week 2: Linked Lists  
-- Problem 206
-- Problem 21`}
-                </pre>
-              </div>
-
-              <button
-                onClick={handleGithubImport}
-                disabled={loading || !githubUrl.trim()}
-                className="w-full px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 disabled:from-gray-700 disabled:to-gray-700 disabled:cursor-not-allowed rounded-lg text-white font-medium transition-all flex items-center justify-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <Loader className="w-5 h-5 animate-spin" />
-                    Importing...
-                  </>
-                ) : (
-                  <>
-                    <Github className="w-5 h-5" />
-                    Import Track
-                  </>
-                )}
-              </button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Track Name (no spaces) *
+              </label>
+              <input
+                type="text"
+                value={trackName}
+                onChange={(e) => setTrackName(e.target.value.replace(/\s+/g, '_'))}
+                placeholder="my_mix_track"
+                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              />
             </div>
-          )}
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Display Title *
+              </label>
+              <input
+                type="text"
+                value={trackTitle}
+                onChange={(e) => setTrackTitle(e.target.value)}
+                placeholder="🚀 Mixed Platform Grind"
+                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              />
+            </div>
+          </div>
 
-          {/* Manual Creation */}
-          {step === 'manual' && (
-            <div className="space-y-4">
-              <button
-                onClick={() => setStep('method')}
-                className="text-cyan-400 hover:text-cyan-300 text-sm"
-              >
-                ← Back to method selection
-              </button>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Track Name (Internal ID)
-                </label>
-                <input
-                  type="text"
-                  value={trackName}
-                  onChange={(e) => setTrackName(e.target.value.replace(/\s+/g, '_'))}
-                  placeholder="my_custom_track"
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Track Title (Display Name)
-                </label>
-                <input
-                  type="text"
-                  value={trackTitle}
-                  onChange={(e) => setTrackTitle(e.target.value)}
-                  placeholder="🎯 My Custom Track"
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Track Color
-                </label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Tagline / Description
+              </label>
+              <input
+                type="text"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Focus on 2 pointers & DP"
+                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Track Accent
+              </label>
+              <div className="flex items-center gap-3">
+                <Palette className="w-5 h-5 text-gray-400" />
                 <select
                   value={trackColor}
                   onChange={(e) => setTrackColor(e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-cyan-500"
+                  className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
                 >
-                  <option value="from-purple-500 to-pink-600">Purple to Pink</option>
-                  <option value="from-green-500 to-emerald-600">Green to Emerald</option>
-                  <option value="from-blue-500 to-indigo-600">Blue to Indigo</option>
-                  <option value="from-orange-500 to-red-600">Orange to Red</option>
-                  <option value="from-cyan-500 to-blue-600">Cyan to Blue</option>
+                  {COLOR_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </div>
+            </div>
+          </div>
 
-              {/* Weeks */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <label className="block text-sm font-medium text-gray-300">
-                    Weeks & Problems
-                  </label>
-                  <button
-                    onClick={addWeek}
-                    className="flex items-center gap-1 px-3 py-1 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/30 rounded-lg text-cyan-400 text-sm transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Week
-                  </button>
-                </div>
+          <div className="bg-black rounded-lg border border-gray-800 p-4 space-y-3">
+            <div className="flex flex-wrap gap-2 items-center">
+              <Filter className="w-4 h-4 text-gray-400" />
+              {PLATFORM_FILTERS.map((option) => (
+                <button
+                  key={option.value}
+                  onClick={() => setPlatformFilter(option.value)}
+                  className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+                    platformFilter === option.value
+                      ? 'bg-cyan-500 text-white'
+                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
 
-                <div className="space-y-4">
-                  {weeks.map((week, index) => (
-                    <div key={index} className="p-4 bg-gray-800/50 border border-gray-700 rounded-lg">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="font-medium text-white">{week.weekKey}</h4>
-                        {weeks.length > 1 && (
-                          <button
-                            onClick={() => removeWeek(index)}
-                            className="p-1 hover:bg-red-500/20 rounded transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4 text-red-400" />
-                          </button>
-                        )}
-                      </div>
+            <div className="flex flex-wrap gap-3 items-center">
+              {['All', 'Easy', 'Medium', 'Hard'].map((diff) => (
+                <button
+                  key={diff}
+                  onClick={() => setDifficultyFilter(diff as DifficultyFilter)}
+                  className={`px-3 py-1 text-xs font-semibold rounded-full ${
+                    difficultyFilter === diff
+                      ? 'bg-purple-500/20 border border-purple-400 text-purple-200'
+                      : 'bg-gray-800 text-gray-400 border border-gray-700 hover:bg-gray-700'
+                  }`}
+                >
+                  {diff}
+                </button>
+              ))}
 
-                      <input
-                        type="text"
-                        value={week.title}
-                        onChange={(e) => updateWeek(index, 'title', e.target.value)}
-                        placeholder="Week title (e.g., Arrays & Strings)"
-                        className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500 mb-2"
-                      />
-
-                      <textarea
-  value={week.problemsText || ''}
-  onChange={(e) => {
-    const text = e.target.value;
-    const nums = text.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n));
-    const updated = [...weeks];
-    updated[index] = { 
-      ...updated[index], 
-      problemsText: text,
-      problems: nums 
-    };
-    setWeeks(updated);
-  }}
-                        placeholder="LeetCode problem numbers (e.g., 1, 121, 217)"
-                        rows={2}
-                        className="w-full px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        {week.problems.length} problems
-                      </p>
-                    </div>
-                  ))}
-                </div>
+              <div className="relative flex-1 min-w-[220px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Search by # or title..."
+                  className="w-full bg-gray-900 border border-gray-700 rounded-lg pl-9 pr-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                />
               </div>
+            </div>
 
+            <div className="flex flex-wrap items-center justify-between text-xs text-gray-400 gap-2">
+              <span>
+                Showing {filteredProblems.length} problems · {filteredSelectedCount} selected
+              </span>
               <button
-                onClick={handleManualCreate}
-                disabled={loading}
-                className="w-full px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:from-gray-700 disabled:to-gray-700 disabled:cursor-not-allowed rounded-lg text-white font-medium transition-all flex items-center justify-center gap-2"
+                type="button"
+                onClick={selectAllFiltered}
+                className="text-cyan-400 hover:text-cyan-200"
               >
-                {loading ? (
-                  <>
-                    <Loader className="w-5 h-5 animate-spin" />
-                    Creating...
-                  </>
-                ) : (
-                  'Create Track'
-                )}
+                {filteredProblems.length > 0 && filteredSelectedCount === filteredProblems.length
+                  ? 'Deselect filtered'
+                  : 'Select filtered'}
               </button>
             </div>
-          )}
+          </div>
+
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-[360px] overflow-y-auto pr-1">
+    {filteredProblems.length === 0 ? (
+      <div className="col-span-2 text-center text-gray-500 py-10">
+        No problems match your filters.
+      </div>
+    ) : (
+      filteredProblems.map((problem) => {
+        const platformMeta =
+          PLATFORM_INFO[problem.platform as keyof typeof PLATFORM_INFO];
+        const isSelected = selectedProblems.has(problem.id);
+
+        return (
+          <label
+            key={problem.id}
+            className={`flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
+              isSelected
+                ? 'bg-cyan-500/10 border-cyan-500'
+                : 'bg-gray-900 border-gray-800 hover:border-cyan-500/50'
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => toggleProblem(problem.id)}
+              className="w-4 h-4 text-cyan-500 bg-gray-800 border-gray-600 rounded focus:ring-cyan-500"
+            />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm text-white truncate">
+                  #{problem.platformNum} {problem.title}
+                </p>
+                <span className="text-xs text-gray-500 shrink-0">
+                  {getPointsForProblem(problem)} pts
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 mt-1 text-xs">
+                <span className={`px-2 py-0.5 rounded-full border ${getDifficultyColor(problem.difficulty)}`}>
+                  {problem.difficulty}
+                </span>
+                <span className="px-2 py-0.5 rounded-full bg-gray-800 border border-gray-700 text-gray-300 flex items-center gap-1">
+                  <span>{platformMeta?.icon ?? '🧩'}</span>
+                  {platformMeta?.name ?? problem.platform}
+                </span>
+              </div>
+            </div>
+          </label>
+        );
+      })
+    )}
+  </div>
+
+          <div className="bg-black rounded-lg border border-gray-800 p-4 flex flex-wrap items-center gap-4">
+            <div>
+              <p className="text-sm text-gray-400">Problems Selected</p>
+              <p className="text-xl font-bold text-white">{selectedProblems.size}</p>
+            </div>
+            <div>
+              <p className="text-sm text-gray-400">Estimated Points</p>
+              <p className="text-xl font-bold text-cyan-400">{totalPoints}</p>
+            </div>
+            <div className="flex-1 min-w-[150px]">
+              <p className="text-sm text-gray-400 mb-1">Platforms</p>
+              <div className="flex flex-wrap gap-2 text-xs text-gray-300">
+                {Object.keys(platformBreakdown).length === 0 ? (
+                  <span className="text-gray-500">None</span>
+                ) : (
+                  Object.entries(platformBreakdown).map(([platform, count]) => (
+                    <span
+                      key={platform}
+                      className="px-2 py-0.5 rounded-full bg-gray-800 border border-gray-700 capitalize"
+                    >
+                      {platform}: {count}
+                    </span>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg bg-gray-800 hover:bg-gray-700 text-white transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={loading || selectedProblems.size === 0 || !trackName.trim() || !trackTitle.trim()}
+              onClick={handleCreateTrack}
+              className="px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 disabled:opacity-50 text-white font-semibold flex items-center justify-center gap-2 transition-colors"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" />
+                  Create Track
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </motion.div>
     </div>
   );
 }
+

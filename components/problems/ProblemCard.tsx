@@ -10,9 +10,12 @@ interface Problem {
   id: number;
   title: string;
   difficulty: string;
-  leetcodeNum: number;
   points: number;
+  leetcodeNum?: number;
+  platformNum?: number;
+  platform?: string;
   titleSlug?: string;
+  link?: string;
 }
 
 interface ProblemCardProps {
@@ -101,7 +104,13 @@ export default function ProblemCard({
     }
   };
 
-  const problemUrl = `https://leetcode.com/problems/${problem.titleSlug || problem.title.toLowerCase().replace(/\s+/g, '-').replace(/[()]/g, '')}/`;
+  const generatedSlug = problem.title
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[()]/g, '');
+  const defaultUrl = `https://leetcode.com/problems/${problem.titleSlug || generatedSlug}/`;
+  const problemUrl = problem.link || defaultUrl;
+  const displayNumber = problem.leetcodeNum ?? problem.platformNum ?? problem.id;
 
   return (
     <motion.div
@@ -146,7 +155,9 @@ export default function ProblemCard({
 
           <div className="flex-1">
             <div className="flex items-center gap-3">
-              <span className="text-gray-500 font-mono text-sm">#{problem.leetcodeNum}</span>
+              <span className="text-gray-500 font-mono text-sm">
+                {displayNumber ? `#${displayNumber}` : ''}
+              </span>
               <span className={`font-medium ${isSolved ? 'text-gray-500 line-through' : 'text-white'}`}>
                 {problem.title}
               </span>
@@ -163,6 +174,11 @@ export default function ProblemCard({
             <span className={`px-3 py-1 rounded-full text-xs font-medium border ${getDifficultyColor(problem.difficulty)}`}>
               {problem.difficulty}
             </span>
+            {problem.platform && (
+              <span className="px-2 py-1 rounded-full text-xs font-medium bg-gray-800 border border-gray-700 text-gray-300 capitalize">
+                {problem.platform}
+              </span>
+            )}
             <span className="text-cyan-400 font-medium text-sm">{problem.points} pts</span>
           </div>
         </div>
