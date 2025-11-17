@@ -2,7 +2,7 @@
 "use client";
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Code2, Sparkles, Zap, Trophy } from 'lucide-react';
+import { Sparkles, Zap, Trophy } from 'lucide-react';
 import { useAuth } from '@/lib/hooks/useAuth';
 
 export default function LoginScreen() {
@@ -31,8 +31,12 @@ export default function LoginScreen() {
           <div className="flex justify-center mb-6">
             <div className="relative">
               <div className="absolute inset-0 bg-gradient-to-r from-cyan-500 to-blue-500 rounded-2xl blur-lg opacity-50"></div>
-              <div className="relative w-20 h-20 bg-gradient-to-br from-cyan-500 to-blue-600 rounded-2xl flex items-center justify-center transform hover:scale-110 transition-transform">
-                <Code2 className="w-10 h-10 text-white" />
+              <div className="relative w-24 h-24 rounded-2xl overflow-hidden bg-black border border-cyan-500/60 flex items-center justify-center transform hover:scale-110 transition-transform">
+                <img
+                  src="/logo.png"
+                  alt="CodeQuest logo"
+                  className="w-full h-full object-contain"
+                />
               </div>
             </div>
           </div>
