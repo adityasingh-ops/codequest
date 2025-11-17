@@ -12,6 +12,7 @@ interface Problem {
   difficulty: string;
   leetcodeNum: number;
   points: number;
+  titleSlug?: string;
 }
 
 interface ProblemCardProps {

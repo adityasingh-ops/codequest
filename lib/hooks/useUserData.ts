@@ -1,9 +1,10 @@
 // lib/hooks/useUserData.ts
 import { useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import type { UserStats } from '@/lib/interfaces/User/UserStats';
 
 export const useUserData = (userId: string | undefined) => {
-  const [userStats, setUserStats] = useState<any>(null);
+  const [userStats, setUserStats] = useState<UserStats | null>(null);
   const [solvedProblems, setSolvedProblems] = useState<Set<number>>(new Set());
   const [revisionProblems, setRevisionProblems] = useState<Set<number>>(new Set());
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
@@ -46,7 +47,7 @@ export const useUserData = (userId: string | undefined) => {
 
       if (stats) {
         console.log('User stats loaded:', stats);
-        setUserStats(stats);
+        setUserStats(stats as UserStats);
         setSolvedProblems(new Set(stats.solved_problems || []));
         setRevisionProblems(new Set(stats.revision_problems || []));
       } else {
@@ -72,7 +73,7 @@ export const useUserData = (userId: string | undefined) => {
         if (insertError) throw insertError;
         
         console.log('New user stats created:', newStats);
-        setUserStats(newStats);
+        setUserStats(newStats as UserStats);
         setSolvedProblems(new Set());
         setRevisionProblems(new Set());
       }
@@ -123,10 +124,14 @@ export const useUserData = (userId: string | undefined) => {
       if (error) throw error;
 
       setRevisionProblems(newRevisionProblems);
-      setUserStats(prevStats => ({
-        ...prevStats,
-        revision_problems: Array.from(newRevisionProblems)
-      }));
+      setUserStats((prevStats: UserStats | null) =>
+        prevStats
+          ? {
+              ...prevStats,
+              revision_problems: Array.from(newRevisionProblems)
+            }
+          : prevStats
+      );
     } catch (error) {
       console.error('Error updating revision status:', error);
       throw error;
@@ -222,7 +227,9 @@ export const useUserData = (userId: string | undefined) => {
       return;
     }
 
-    setUserStats(prevStats => ({ ...prevStats, avatar: avatarId }));
+    setUserStats((prevStats: UserStats | null) =>
+      prevStats ? { ...prevStats, avatar: avatarId } : prevStats
+    );
   }, [userId]);
 
   const updateName = useCallback(async (newName: string) => {
@@ -252,10 +259,14 @@ export const useUserData = (userId: string | undefined) => {
         return false;
       }
 
-      setUserStats(prevStats => ({
-        ...prevStats,
-        name: newName.trim()
-      }));
+      setUserStats((prevStats: UserStats | null) =>
+        prevStats
+          ? {
+              ...prevStats,
+              name: newName.trim()
+            }
+          : prevStats
+      );
       
       await loadLeaderboard();
       

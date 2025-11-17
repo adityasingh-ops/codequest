@@ -23,6 +23,28 @@ interface RaceParticipant {
   };
 }
 
+const normalizeParticipants = (participants: any[] = []): RaceParticipant[] => {
+  return participants.map((participant) => {
+    const stats = Array.isArray(participant.user_stats)
+      ? participant.user_stats[0]
+      : participant.user_stats;
+
+    return {
+      user_id: String(participant.user_id),
+      problems_solved: participant.problems_solved ?? 0,
+      points_earned: participant.points_earned ?? 0,
+      joined_at: participant.joined_at ?? '',
+      user_stats: stats
+        ? {
+            name: stats.name ?? 'Anonymous',
+            avatar: stats.avatar ?? 'user',
+            leetcode_username: stats.leetcode_username ?? ''
+          }
+        : undefined
+    };
+  });
+};
+
 export default function RaceTrackDashboard({ raceId, solvedCount, avatar }: RaceTrackProps) {
   const { IconComponent: AvatarIcon, color: avatarColor } = getAvatarComponent(avatar);
   const [raceData, setRaceData] = useState<any>(null);
@@ -52,7 +74,7 @@ export default function RaceTrackDashboard({ raceId, solvedCount, avatar }: Race
         setRaceData(data);
         
         const lb = await getRaceLeaderboard(raceId);
-        setLeaderboard(lb);
+        setLeaderboard(normalizeParticipants(lb));
       } catch (error) {
         console.error('Error loading race:', error);
         setShowNoRaceUI(true);
@@ -70,7 +92,7 @@ export default function RaceTrackDashboard({ raceId, solvedCount, avatar }: Race
 
     const unsubscribe = subscribeToRaceUpdates(raceId, async () => {
       const lb = await getRaceLeaderboard(raceId);
-      setLeaderboard(lb);
+      setLeaderboard(normalizeParticipants(lb));
     });
 
     return unsubscribe;

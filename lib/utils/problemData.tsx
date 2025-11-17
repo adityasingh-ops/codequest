@@ -23,6 +23,7 @@ export interface TrackData {
   weeks: Record<string, Week>;
   isCustom?: boolean;
 }
+export type ProblemData = Record<string, TrackData>;
 export interface JenkinsTask {
   id: string;
   user_id: string;
@@ -106,7 +107,7 @@ export type JenkinsRoadmapData = {
   [key: string]: PhaseData;
 };
 
-export const problemData = {
+export const problemData: ProblemData = {
   "Beginner": {
     title: "🌱 Beginner Track",
     color: "from-green-500 to-emerald-600",

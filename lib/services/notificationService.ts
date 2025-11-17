@@ -28,8 +28,7 @@ export const getNotifications = async (userId: string) => {
     .limit(50);
 
   if (error) {
-    console.error('Error fetching notifications:', error);
-    return [];
+    throw new Error(`Error fetching notifications: ${error.message}`);
   }
 
   return (data || []).map(notif => ({
@@ -46,8 +45,7 @@ export const getUnreadCount = async (userId: string) => {
     .eq('is_read', false);
 
   if (error) {
-    console.error('Error fetching unread count:', error);
-    return 0;
+    throw new Error(`Error fetching unread notification count: ${error.message}`);
   }
 
   return count || 0;

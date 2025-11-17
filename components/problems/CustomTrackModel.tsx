@@ -21,7 +21,7 @@ interface WeekInput {
 
 
 export default function CustomTrackModal({ userId, onClose, onSuccess }: CustomTrackModalProps) {
-  const [step, setStep] = useState<'method' | 'github' | 'manual'>('method');
+  const [step, setStep] = useState<'method' | 'github' | 'json' | 'manual'>('method');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   

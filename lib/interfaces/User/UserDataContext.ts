@@ -5,7 +5,6 @@ export interface UserDataContextType {
   solvedProblems: Set<number>;
   revisionProblems: Set<number>;
   leaderboard: any[];
-  user:any[];
   OtherUsers: any[];
   weeklyStreak: any[];
   loading: boolean;

@@ -17,6 +17,25 @@ interface UserProfile {
   solved_count?: number;
 }
 
+const normalizeUserStats = (entry: any): UserProfile | null => {
+  const rawStats = entry?.user_stats ?? entry;
+  const stats = Array.isArray(rawStats) ? rawStats[0] : rawStats;
+
+  if (!stats) {
+    return null;
+  }
+
+  return {
+    user_id: stats.user_id,
+    name: stats.name ?? 'Anonymous',
+    points: stats.points ?? 0,
+    avatar: stats.avatar ?? 'user',
+    leetcode_username: stats.leetcode_username ?? '',
+    streak: stats.streak ?? 0,
+    solved_count: stats.solved_count ?? 0
+  };
+};
+
 export default function FollowersTab({ activeTab }: { activeTab: 'followers' | 'following' | 'discover' }) {
   const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
@@ -38,7 +57,10 @@ export default function FollowersTab({ activeTab }: { activeTab: 'followers' | '
         .eq('following_id', user.id);
 
       if (error) throw error;
-      const followersList = data?.map(f => f.user_stats).filter(Boolean) || [];
+      const followersList =
+        data
+          ?.map(normalizeUserStats)
+          .filter((stats): stats is UserProfile => Boolean(stats)) || [];
       setUsers(followersList);
       setFollowerIds(new Set(followersList.map(u => u.user_id)));
     } catch (err) {
@@ -61,7 +83,10 @@ export default function FollowersTab({ activeTab }: { activeTab: 'followers' | '
         .eq('follower_id', user.id);
 
       if (error) throw error;
-      const followingList = data?.map(f => f.user_stats).filter(Boolean) || [];
+      const followingList =
+        data
+          ?.map(normalizeUserStats)
+          .filter((stats): stats is UserProfile => Boolean(stats)) || [];
       setUsers(followingList);
       setFollowingIds(new Set(followingList.map(u => u.user_id)));
     } catch (err) {
@@ -82,7 +107,11 @@ export default function FollowersTab({ activeTab }: { activeTab: 'followers' | '
         .order('points', { ascending: false });
 
       if (error) throw error;
-      setUsers(data || []);
+      const normalizedUsers =
+        data
+          ?.map(normalizeUserStats)
+          .filter((stats): stats is UserProfile => Boolean(stats)) || [];
+      setUsers(normalizedUsers);
 
       // Load who user is already following
       const { data: followingData } = await supabase

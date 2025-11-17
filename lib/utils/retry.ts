@@ -1,5 +1,3 @@
-import { useCallback } from "react";
-
 // lib/utils/retry.ts
 export async function retryWithBackoff<T>(
   fn: () => Promise<T>,
@@ -19,16 +17,3 @@ export async function retryWithBackoff<T>(
   }
   throw new Error('Max retries exceeded');
 }
-
-// Use in loadUserData:
-export const loadUserData = useCallback(async (userId: string) => {
-  if (!userId) return;
-
-  try {
-    await retryWithBackoff(async () => {
-      // Your existing fetch logic here
-    });
-  } catch (error) {
-    console.error('Failed to load user data after retries:', error);
-  }
-}, [userId]);

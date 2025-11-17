@@ -1,12 +1,10 @@
 // lib/hooks/useTeams.ts
 import { useState, useEffect } from 'react';
 import { Team, TeamMember } from '@/lib/types/teams.types';
-import { createClient } from '@/lib/supabase/client';
 
 export function useTeams() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
 
   const fetchTeams = async (search?: string) => {
     setLoading(true);
