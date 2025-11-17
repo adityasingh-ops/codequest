@@ -69,7 +69,7 @@ export const useAuth = () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin
+        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
       }
     });
     if (error) console.error('Error signing in:', error);
